@@ -9,10 +9,43 @@ import '../catalog/dcf_scanner.dart';
 import '../catalog/photo_entity.dart';
 import '../volume_select/card_selection.dart';
 import '../../app/app_shell.dart';
+import '../../infra/safety/io_errors.dart';
+import '../../infra/safety/parasite_guard.dart';
 import '../trash/trash_screen.dart';
 import '../viewer/viewer_screen.dart';
 import 'photo_cell.dart';
 import 'thumbnail_provider.dart';
+
+/// Everything that happens between a card being opened and its photographs
+/// being shown.
+///
+/// The order is the plan's and it matters. Our own debris goes first, because
+/// a stranded temp file from an interrupted write would otherwise be walked
+/// past by the reconciliation that is about to make sense of that very write.
+/// Reconciliation comes next, so the trash states describe the card as it is
+/// before anything is drawn from them. The foreign-parasite report comes last
+/// and changes nothing — removing those is a write to the user's card and
+/// therefore the user's decision.
+final cardOpenProvider = FutureProvider<CardOpenReport>((ref) async {
+  final selection = ref.watch(cardSelectionProvider);
+  if (selection is! CardSelectionOpened) return CardOpenReport.none;
+  final root = selection.path;
+
+  const guard = ParasiteGuard();
+  final debris = await guard.removeOwnDebris(root);
+
+  final trash = await ref.watch(trashServiceProvider.future);
+  final reconciled = await trash.reconcile(cardRoot: root);
+
+  final parasites = await guard.scan(root);
+  return CardOpenReport(
+    debrisRemoved: debris.removed,
+    parasites: parasites.foreign.toList(),
+    writable: await cardAcceptsWrites(root),
+    reconciled: reconciled.resolved.length,
+    losses: reconciled.unresolvedLosses,
+  );
+});
 
 /// The photographs on the open card.
 ///
@@ -28,6 +61,9 @@ final cardCatalogProvider = FutureProvider<CardCatalog>((ref) async {
       scanDuration: Duration.zero,
     );
   }
+  // Awaited, not merely started: a library built while an interrupted deletion
+  // was still unresolved would be showing the user a guess.
+  await ref.watch(cardOpenProvider.future);
   return const DcfScanner().scan(selection.path);
 });
 

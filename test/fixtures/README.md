@@ -124,9 +124,12 @@ Three findings from the same card that reach beyond the preview pipeline:
 - **macOS creates `.fseventsd/fseventsd-uuid` at mount time**, before the app is
   involved at all. It was there after a session that only ever read the card, so
   CARTE-2's "zero parasite files" cannot be met by the app declining to write:
-  it has to be met by suppressing fsevents on the volume, or by cleaning up
-  before eject. No `.DS_Store` or `._*` appeared, and nothing under `DCIM/` or
-  `PRIVATE/` was modified.
+  it has to be met by cleaning up before eject. That is what U10's parasite
+  guard does — it reports what it finds and removes only what the user asks for,
+  since removing anything is itself a write to their card. The exception is the
+  app's own `~OBSCURA-` debris, which is cleared on open without asking, because
+  it cannot be anything but ours. No `.DS_Store` or `._*` appeared, and nothing
+  under `DCIM/` or `PRIVATE/` was modified.
 
 All three belong to the catalog, deletion and card-safety units, not to preview
 extraction.
