@@ -8,6 +8,7 @@ import 'package:obscura_pro/features/catalog/photo_entity.dart';
 import 'package:obscura_pro/features/grid/thumbnail_provider.dart';
 import 'package:obscura_pro/infra/db/database.dart';
 import 'package:obscura_pro/infra/preview/isolate_pool.dart';
+import 'package:obscura_pro/infra/preview/preview_extractor.dart';
 import 'package:obscura_pro/infra/preview/thumb_cache.dart';
 
 import '../../fixtures/fake_card.dart';
@@ -156,6 +157,26 @@ void main() {
       // exactly that, never the full frame.
       expect(image.width, 320);
       expect(service.memory.byteSize, 320 * 213 * 4);
+    });
+
+    test('serves a portrait photograph standing up', () async {
+      await card.addPhoto('L1000863',
+          decodable: true, orientation: ExifOrientation.rotate90);
+      final photo = (await catalogue()).single;
+
+      final thumbnail = await service.gridThumbnail(photo, targetShortSide: 40);
+
+      // The stored preview is 128x85 landscape. Half of a real Q3 card is shot
+      // this way, so a pipeline that skipped this would lay a session out
+      // sideways.
+      expect(thumbnail.width, 40);
+      expect(thumbnail.height, 60);
+
+      // And the cache holds it upright too — reopening the app must not undo
+      // the rotation.
+      final warm = await service.gridThumbnail(photo, targetShortSide: 40);
+      expect(warm.fromCache, isTrue);
+      expect(warm.height, 60);
     });
 
     test('withdrawing a cell\'s request drops it', () async {

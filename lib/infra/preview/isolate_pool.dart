@@ -22,6 +22,8 @@ import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
 
+import 'preview_extractor.dart' show ExifOrientation;
+
 /// One decode, described by the byte range the catalog scan already recorded.
 ///
 /// No IFD walking happens here: [offset] and [length] come from the `photo` row,
@@ -32,12 +34,20 @@ final class ThumbnailRequest {
     required this.offset,
     required this.length,
     required this.targetShortSide,
+    this.orientation = ExifOrientation.normal,
     this.quality = 85,
   });
 
   final String filePath;
   final int offset;
   final int length;
+
+  /// EXIF orientation of the photograph the preview came from, 1..8.
+  ///
+  /// Applied here, so what lands in the cache is upright and every consumer
+  /// downstream — grid cell, viewer, export — can treat a cached thumbnail as a
+  /// picture rather than as pixels plus a correction still owed.
+  final int orientation;
 
   /// Desired short side in *device* pixels. The result is never upscaled past
   /// the source: asking for more pixels than the camera embedded would only
@@ -446,22 +456,55 @@ Future<ThumbnailBytes> renderThumbnail(ThumbnailRequest request) async {
     throw ThumbnailDecodeException('${request.filePath} did not decode: $error');
   }
 
+  // Downscale first, then turn. A 90-degree rotation costs a pass over every
+  // pixel, and doing it to a 1620x1080 frame instead of a 400-pixel tile is
+  // eleven times the work for the same result.
   final scaled = _downscale(decoded, request.targetShortSide);
+  final upright = _applyOrientation(scaled, request.orientation);
 
-  // When nothing was scaled, the source bytes are already the answer, and
-  // re-encoding them would spend a JPEG generation to produce a slightly worse
-  // copy of a file we are holding.
-  final jpeg = identical(scaled, decoded)
+  // When nothing was scaled and nothing was turned, the source bytes are already
+  // the answer, and re-encoding them would spend a JPEG generation to produce a
+  // slightly worse copy of a file we are holding.
+  final jpeg = identical(upright, decoded)
       ? source
-      : img.encodeJpg(scaled, quality: request.quality);
+      : img.encodeJpg(upright, quality: request.quality);
 
   return ThumbnailBytes(
     jpeg: TransferableTypedData.fromList([jpeg]),
-    width: scaled.width,
-    height: scaled.height,
-    averageColor: averageColorOf(scaled),
+    width: upright.width,
+    height: upright.height,
+    averageColor: averageColorOf(upright),
   );
 }
+
+/// Turns [source] the way its EXIF orientation says is up.
+///
+/// Returns [source] itself for [ExifOrientation.normal], which is what lets the
+/// caller recognise an untouched image and skip re-encoding it.
+///
+/// The mirrored orientations (2, 4, 5, 7) are implemented although no camera in
+/// this app's path produces them: they cost three lines here, and the
+/// alternative — silently rendering a mirrored frame the right way up but the
+/// wrong way round — is the kind of error a photographer would not think to
+/// look for.
+img.Image _applyOrientation(img.Image source, int orientation) => switch (orientation) {
+      ExifOrientation.flipHorizontal =>
+        img.copyFlip(source, direction: img.FlipDirection.horizontal),
+      ExifOrientation.rotate180 => img.copyRotate(source, angle: 180),
+      ExifOrientation.flipVertical =>
+        img.copyFlip(source, direction: img.FlipDirection.vertical),
+      ExifOrientation.transpose => img.copyFlip(
+          img.copyRotate(source, angle: 90),
+          direction: img.FlipDirection.horizontal,
+        ),
+      ExifOrientation.rotate90 => img.copyRotate(source, angle: 90),
+      ExifOrientation.transverse => img.copyFlip(
+          img.copyRotate(source, angle: 270),
+          direction: img.FlipDirection.horizontal,
+        ),
+      ExifOrientation.rotate270 => img.copyRotate(source, angle: 270),
+      _ => source,
+    };
 
 Future<Uint8List> _readRange(ThumbnailRequest request) async {
   final handle = await File(request.filePath).open();

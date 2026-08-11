@@ -112,6 +112,112 @@ void main() {
     });
   });
 
+  group('standing the photograph upright', () {
+    /// Decodes the fixture's 128x85 thumbnail under [orientation].
+    ///
+    /// The fixture's source is a two-axis ramp — red climbing left to right,
+    /// green top to bottom — so every corner is identifiable and a turn can be
+    /// checked by where a corner ended up rather than by trusting the axes.
+    Future<img.Image> render(int orientation) async {
+      final result = await renderThumbnail(
+        ThumbnailRequest(
+          filePath: dng.path,
+          offset: dng.small.offset,
+          length: dng.small.length,
+          targetShortSide: 0, // no downscale, so the corners stay crisp
+          orientation: orientation,
+        ),
+      );
+      return img.decodeJpg(result.takeBytes())!;
+    }
+
+    test('leaves an unrotated photograph byte-identical to the source',
+        () async {
+      final source = await _readRange(dng.path, dng.small.offset, dng.small.length);
+      final result = await renderThumbnail(
+        ThumbnailRequest(
+          filePath: dng.path,
+          offset: dng.small.offset,
+          length: dng.small.length,
+          targetShortSide: 0,
+          orientation: ExifOrientation.normal,
+        ),
+      );
+
+      // Orientation 1 must stay on the no-re-encode path: half a card is
+      // landscape, and spending a JPEG generation on it would be pure loss.
+      expect(result.takeBytes(), source);
+    });
+
+    test('turns a portrait frame a quarter turn clockwise', () async {
+      final image = await render(ExifOrientation.rotate90);
+
+      // 128x85 landscape becomes 85x128 portrait.
+      expect(image.width, 85);
+      expect(image.height, 128);
+
+      // Orientation 6 means "the top of the picture is on the right of the
+      // stored frame", so the stored bottom-left corner — low red, high green —
+      // becomes the displayed top-left.
+      final topLeft = image.getPixel(2, 2);
+      expect(topLeft.r, lessThan(60));
+      expect(topLeft.g, greaterThan(195));
+    });
+
+    test('turns the other portrait direction the other way', () async {
+      final image = await render(ExifOrientation.rotate270);
+
+      expect(image.width, 85);
+      expect(image.height, 128);
+
+      // The mirror case of the test above: the stored top-right corner — high
+      // red, low green — becomes the displayed top-left.
+      final topLeft = image.getPixel(2, 2);
+      expect(topLeft.r, greaterThan(195));
+      expect(topLeft.g, lessThan(60));
+    });
+
+    test('turns an upside-down frame without swapping its axes', () async {
+      final image = await render(ExifOrientation.rotate180);
+
+      expect(image.width, 128);
+      expect(image.height, 85);
+
+      final topLeft = image.getPixel(2, 2);
+      expect(topLeft.r, greaterThan(195));
+      expect(topLeft.g, greaterThan(195));
+    });
+
+    test('mirrors without turning for the flipped orientations', () async {
+      final image = await render(ExifOrientation.flipHorizontal);
+
+      expect(image.width, 128);
+      expect(image.height, 85);
+
+      final topLeft = image.getPixel(2, 2);
+      expect(topLeft.r, greaterThan(195), reason: 'the right edge is now left');
+      expect(topLeft.g, lessThan(60), reason: 'the top edge is still the top');
+    });
+
+    test('reports the turned dimensions, not the stored ones', () async {
+      final result = await renderThumbnail(
+        ThumbnailRequest(
+          filePath: dng.path,
+          offset: dng.small.offset,
+          length: dng.small.length,
+          targetShortSide: 40,
+          orientation: ExifOrientation.rotate90,
+        ),
+      );
+
+      // The cache index is written from these, and the grid lays out cells from
+      // the cache index: reporting the stored 64x40 would make every portrait
+      // cell the wrong shape until its image arrived.
+      expect(result.width, 40);
+      expect(result.height, 60);
+    });
+  });
+
   group('the pool', () {
     late DecodePool pool;
 

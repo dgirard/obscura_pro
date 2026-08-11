@@ -336,6 +336,10 @@ SyntheticDng buildSyntheticDng({
   /// intact, which is how a card with a bad sector reads: the range is
   /// advertised, the data is not there.
   bool fullPreviewTruncated = false,
+
+  /// EXIF `Orientation` written into IFD0. Null omits the tag entirely, which
+  /// is the case a file with no orientation at all exercises.
+  int? orientation,
 }) {
   final thumbnail = decodable
       ? realJpeg(width: thumbnailPixels.width, height: thumbnailPixels.height)
@@ -409,6 +413,7 @@ SyntheticDng buildSyntheticDng({
     0x0106: const ShortField([6]), // YCbCr
     0x0111: PointerField.to(thumbnailBlob),
     0x0117: LongField([thumbnail.length]),
+    if (orientation != null) 0x0112: ShortField([orientation]),
     0x011A: const RationalField([(numerator: 300, denominator: 1)]),
     0x014A: PointerField([rawIfd, previewIfd]),
     0x8769: PointerField.to(exifIfd),

@@ -39,6 +39,23 @@ not `JPEGInterchangeFormat`. This is why the photometric-interpretation check in
 is also strip-encoded with `Compression 7`, so without it the mosaic would be
 handed to a JPEG decoder as if it were a picture.
 
+### Orientation
+
+Counted across all 941 DNGs by reading tag `0x0112` from IFD0:
+
+| Orientation | Meaning | Files |
+|---|---|---|
+| 1 | upright | 475 |
+| 6 | rotate 90° CW | 463 |
+| 8 | rotate 270° CW | 2 |
+| 3 | rotate 180° | 1 |
+
+**Just under half the card is portrait**, and every embedded preview is stored
+landscape regardless — `L1000863.DNG` declares orientation 6 and still carries
+1620 × 1080 and 9520 × 6336 streams. The tag is therefore not cosmetic: a
+pipeline that ignores it lays half a session out on its side. The rotation is
+applied in the decode worker, so what reaches the cache is already upright.
+
 ### Header read size
 
 8 KB resolves the stable-key EXIF fields and all three preview ranges on

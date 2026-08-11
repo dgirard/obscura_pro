@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:obscura_pro/features/catalog/dcf_scanner.dart';
 import 'package:obscura_pro/features/catalog/stable_key.dart';
+import 'package:obscura_pro/infra/preview/preview_extractor.dart';
 
 import '../../fixtures/fake_card.dart';
 
@@ -186,6 +187,29 @@ void main() {
         photo.files.fold<int>(0, (sum, f) => sum + f.sizeBytes),
       );
       expect(photo.totalBytes, greaterThan(0));
+    });
+
+    test('carries the orientation through to the photograph', () async {
+      await card.addPhoto('L1000863',
+          decodable: true, orientation: ExifOrientation.rotate90);
+
+      final photo = (await scanner.scan(card.path)).photos.single;
+
+      expect(photo.orientation, ExifOrientation.rotate90);
+      expect(photo.isPortrait, isTrue);
+      // The stored preview is 128x85; upright it is taller than it is wide, and
+      // the grid has to know that before a single pixel is decoded.
+      expect(photo.displayAspectRatio, closeTo(85 / 128, 0.001));
+    });
+
+    test('a landscape photograph keeps the aspect its preview declares',
+        () async {
+      await card.addPhoto('L1000863', decodable: true);
+
+      final photo = (await scanner.scan(card.path)).photos.single;
+
+      expect(photo.isPortrait, isFalse);
+      expect(photo.displayAspectRatio, closeTo(128 / 85, 0.001));
     });
   });
 

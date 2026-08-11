@@ -107,6 +107,43 @@ void main() {
     });
   });
 
+  group('orientation', () {
+    test('reads the tag a portrait frame carries', () {
+      final header = headerOf(scanPhotoHeader(
+        buildSyntheticDng(orientation: ExifOrientation.rotate90).bytes,
+      ));
+
+      expect(header.orientation, ExifOrientation.rotate90);
+      expect(ExifOrientation.swapsAxes(header.orientation), isTrue);
+    });
+
+    test('treats a file with no orientation tag as upright', () {
+      final header = headerOf(scanPhotoHeader(buildSyntheticDng().bytes));
+
+      expect(header.orientation, ExifOrientation.normal);
+    });
+
+    test('treats a nonsense orientation as upright', () {
+      // A value outside 1..8 is a malformed tag. Turning the picture on a guess
+      // would be worse than leaving it as the camera stored it.
+      final header = headerOf(scanPhotoHeader(
+        buildSyntheticDng(orientation: 42).bytes,
+      ));
+
+      expect(header.orientation, ExifOrientation.normal);
+    });
+
+    test('reads it identically whichever way the file is byte-ordered', () {
+      for (final order in TiffByteOrder.values) {
+        final header = headerOf(scanPhotoHeader(
+          buildSyntheticDng(order: order, orientation: ExifOrientation.rotate270)
+              .bytes,
+        ));
+        expect(header.orientation, ExifOrientation.rotate270, reason: '$order');
+      }
+    });
+  });
+
   group('malformed files', () {
     test('a truncated DNG returns a typed error', () {
       final truncated = buildSyntheticDng().bytes.sublist(0, 40);

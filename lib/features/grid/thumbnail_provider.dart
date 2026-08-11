@@ -141,6 +141,7 @@ class ThumbnailService {
             offset: source.offset,
             length: source.length,
             targetShortSide: targetShortSide,
+            orientation: photo.orientation,
           ),
           tag: key,
         );
@@ -247,6 +248,11 @@ class ThumbnailService {
   /// 240 MB of RGBA, while no display shows more than a few thousand. The
   /// viewer asks for what it can show and asks again, larger, when the user
   /// zooms in.
+  ///
+  /// Unlike a grid thumbnail this comes back in the orientation the file stored
+  /// it in. The engine codec applies no EXIF rotation, and turning a decoded
+  /// full-size frame in memory would cost a second copy of it; the viewer turns
+  /// it on the GPU instead, from [PhotoEntity.orientation].
   Future<ui.Image> fullPreview(
     PhotoEntity photo, {
     required int targetWidth,

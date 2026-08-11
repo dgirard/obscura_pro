@@ -20,6 +20,7 @@ class PhotoEntity {
     this.bodySerial,
     this.gridPreview,
     this.viewerPreview,
+    this.orientation = ExifOrientation.normal,
   });
 
   /// DCF file radical, e.g. `L1000863`. The camera's own name for the picture,
@@ -44,6 +45,29 @@ class PhotoEntity {
   /// decode worker never has to walk the IFD chain a second time.
   final PreviewStream? gridPreview;
   final PreviewStream? viewerPreview;
+
+  /// EXIF orientation of the photograph, 1..8.
+  ///
+  /// The Q3 stores every embedded preview the way the sensor read it and leaves
+  /// this tag to say which way is up, so a portrait frame arrives landscape and
+  /// has to be turned before it is shown.
+  final int orientation;
+
+  /// True when the photograph was shot with the camera turned.
+  bool get isPortrait => ExifOrientation.swapsAxes(orientation);
+
+  /// Aspect ratio the grid should reserve for this photograph, upright, or null
+  /// when no preview declared its dimensions.
+  ///
+  /// Known before any decode, so a cell can lay itself out and paint its
+  /// placeholder at the right shape rather than resizing when the image lands.
+  double? get displayAspectRatio {
+    final stream = gridPreview ?? viewerPreview;
+    final width = stream?.width;
+    final height = stream?.height;
+    if (width == null || height == null || width <= 0 || height <= 0) return null;
+    return isPortrait ? height / width : width / height;
+  }
 
   /// `100LEICA/L1000863` — stable across remounts, unlike an absolute path.
   String get dcfPath => '$folder/$radical';

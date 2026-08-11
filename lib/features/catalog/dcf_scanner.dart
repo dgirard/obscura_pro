@@ -154,6 +154,7 @@ class DcfScanner {
       bodySerial: header?.bodySerial,
       gridPreview: header?.gridPreview,
       viewerPreview: header?.viewerPreview,
+      orientation: header?.orientation ?? ExifOrientation.normal,
     );
   }
 

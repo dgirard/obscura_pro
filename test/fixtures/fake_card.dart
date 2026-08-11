@@ -37,6 +37,10 @@ class FakeCard {
     /// scan never decodes anything; the thumbnail pipeline's fixtures turn it on.
     bool decodable = false,
     bool fullPreviewTruncated = false,
+
+    /// EXIF `Orientation` for the DNG. 6 is the portrait case that dominates a
+    /// real card: roughly half the frames on the measured Q3 session.
+    int? orientation,
   }) async {
     final dir = Directory('${root.path}/DCIM/$folder');
     await dir.create(recursive: true);
@@ -47,6 +51,7 @@ class FakeCard {
         serialNumber: serial,
         decodable: decodable,
         fullPreviewTruncated: fullPreviewTruncated,
+        orientation: orientation,
       );
       await File('${dir.path}/$radical.DNG').writeAsBytes(dng.bytes);
     }

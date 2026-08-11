@@ -29,6 +29,12 @@ abstract final class PreviewTags {
   static const imageLength = 0x0101;
   static const compression = 0x0103;
   static const photometricInterpretation = 0x0106;
+
+  /// EXIF `Orientation`, 1..8. Load-bearing rather than cosmetic: on a real Q3
+  /// card 463 of 941 files carried orientation 6 while every embedded preview
+  /// was stored landscape, so a pipeline that ignores this tag renders half a
+  /// session on its side.
+  static const orientation = 0x0112;
   static const stripOffsets = 0x0111;
   static const stripByteCounts = 0x0117;
   static const jpegInterchangeFormat = 0x0201;
@@ -43,6 +49,38 @@ abstract final class PreviewTags {
   /// DNG's own serial tag, present on files whose EXIF IFD omits
   /// [bodySerialNumber].
   static const cameraSerialNumber = 0xC62F;
+}
+
+/// The eight EXIF orientations, named.
+///
+/// The numbering is not an ordering and not a rotation angle — 5 and 7 are
+/// mirror-and-turn combinations no photograph off a camera actually uses — so
+/// every consumer switches on the value rather than doing arithmetic with it.
+abstract final class ExifOrientation {
+  static const normal = 1;
+  static const flipHorizontal = 2;
+  static const rotate180 = 3;
+  static const flipVertical = 4;
+  static const transpose = 5;
+  static const rotate90 = 6;
+  static const transverse = 7;
+  static const rotate270 = 8;
+
+  /// Whether displaying the image upright swaps its width and height.
+  ///
+  /// The grid needs this before any pixel is decoded: it is what tells a cell
+  /// that a 1620x1080 preview is going to arrive as a 1080x1620 picture.
+  static bool swapsAxes(int orientation) => switch (orientation) {
+        transpose || rotate90 || transverse || rotate270 => true,
+        _ => false,
+      };
+
+  /// Clamps a declared value to something this app will act on. Anything
+  /// outside 1..8 is a malformed tag and is treated as no rotation at all.
+  static int sanitize(int? declared) =>
+      (declared != null && declared >= normal && declared <= rotate270)
+          ? declared
+          : normal;
 }
 
 const int _compressionJpeg = 7;
@@ -109,6 +147,7 @@ final class PhotoHeader {
     required this.previews,
     required this.dateTimeOriginal,
     required this.bodySerial,
+    this.orientation = ExifOrientation.normal,
   });
 
   /// Located preview streams in discovery order. May be empty: a DNG written
@@ -122,6 +161,11 @@ final class PhotoHeader {
   final DateTime? dateTimeOriginal;
 
   final String? bodySerial;
+
+  /// How the previews must be turned to stand upright. [ExifOrientation.normal]
+  /// when the file declares nothing, which is also what an unreadable value
+  /// degrades to — turning a picture the wrong way is worse than not turning it.
+  final int orientation;
 
   /// Previews smallest first.
   ///
@@ -225,6 +269,7 @@ PreviewScanResult _scanTiff(Uint8List prefix, int fileLength) {
       previews: collector.streams,
       dateTimeOriginal: collector.dateTimeOriginal,
       bodySerial: collector.bodySerial,
+      orientation: collector.orientation,
     ),
   );
 }
@@ -245,6 +290,16 @@ class _Collector {
 
   DateTime? dateTimeOriginal;
   String? bodySerial;
+
+  /// IFD0's orientation, and only IFD0's.
+  ///
+  /// A DNG's preview SubIFDs may carry their own copy of the tag, and it
+  /// describes the preview's own storage rather than the photograph. IFD0 is
+  /// the one the camera meant, and since the walk reaches it first, the first
+  /// value seen is the right one.
+  int? _orientation;
+
+  int get orientation => ExifOrientation.sanitize(_orientation);
 
   void walkChain(int firstOffset, {required int depth}) {
     var offset = firstOffset;
@@ -284,6 +339,7 @@ class _Collector {
     // DNG puts the body serial in IFD0; EXIF puts it in the EXIF IFD. Either
     // satisfies the stable key, so whichever turns up first is kept.
     bodySerial ??= _readSerial(ifd, PreviewTags.cameraSerialNumber);
+    _orientation ??= ifd.intValue(PreviewTags.orientation);
 
     final exifPointer = ifd.intValue(PreviewTags.exifIfdPointer);
     if (exifPointer == null || exifPointer == 0) return;
@@ -381,6 +437,7 @@ PreviewScanResult _scanJpeg(Uint8List prefix, int fileLength) {
   String? bodySerial;
   int? fullWidth;
   int? fullHeight;
+  int? orientation;
 
   try {
     final tiffBase = _findExifTiffBlock(prefix, fileLength);
@@ -390,6 +447,7 @@ PreviewScanResult _scanJpeg(Uint8List prefix, int fileLength) {
       bodySerial = ifd0.field(PreviewTags.cameraSerialNumber)?.asAscii();
       fullWidth = ifd0.intValue(PreviewTags.imageWidth);
       fullHeight = ifd0.intValue(PreviewTags.imageLength);
+      orientation = ifd0.intValue(PreviewTags.orientation);
 
       final exifPointer = ifd0.intValue(PreviewTags.exifIfdPointer);
       if (exifPointer != null && exifPointer != 0) {
@@ -444,6 +502,7 @@ PreviewScanResult _scanJpeg(Uint8List prefix, int fileLength) {
       previews: streams,
       dateTimeOriginal: dateTimeOriginal,
       bodySerial: (bodySerial?.isEmpty ?? true) ? null : bodySerial,
+      orientation: ExifOrientation.sanitize(orientation),
     ),
   );
 }
