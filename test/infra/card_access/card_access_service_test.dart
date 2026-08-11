@@ -132,6 +132,60 @@ void main() {
       expect(await serviceFor(picks: null).chooseCard(), isNull);
       expect(bridge.started, 0);
     });
+
+    test('resolves the bookmark before taking the scope', () async {
+      final card = await makeCardTree();
+      addTearDown(() => card.delete(recursive: true));
+      final service = serviceFor(picks: card.path);
+
+      await service.chooseCard();
+      addTearDown(service.dispose);
+
+      // The order is the whole point. Apple's
+      // startAccessingSecurityScopedResource accepts only the URL that came out
+      // of resolving a bookmark, so taking the scope before the resolve fails —
+      // and fails with a message about a malformed argument, which sends anyone
+      // reading it looking in the wrong place.
+      final encode = bridge.calls.indexWhere((c) => c.startsWith('encode:'));
+      final decode = bridge.calls.indexWhere((c) => c.startsWith('decode:'));
+      final start = bridge.calls.indexWhere((c) => c.startsWith('start:'));
+
+      expect(encode, lessThan(decode));
+      expect(decode, lessThan(start));
+      expect(service.cardSurvivesRelaunch, isTrue);
+    });
+
+    test('opens the card even when the scope cannot be taken', () async {
+      final card = await makeCardTree();
+      addTearDown(() => card.delete(recursive: true));
+      bridge.startAccessThrows = StateError('no scope for you');
+      final service = serviceFor(picks: card.path);
+
+      final check = await service.chooseCard();
+      addTearDown(service.dispose);
+
+      // The panel already granted this process access; the scope only makes it
+      // survive a relaunch. Losing the session over it would show the user
+      // nothing at all in exchange for strictness.
+      expect(check, isA<CardAccepted>());
+      expect(service.openCardPath, card.path);
+      expect(service.cardSurvivesRelaunch, isFalse);
+      expect(service.scopeFailure, contains('no scope for you'));
+    });
+
+    test('does not release a scope it never took', () async {
+      final card = await makeCardTree();
+      addTearDown(() => card.delete(recursive: true));
+      bridge.startAccessThrows = StateError('no scope for you');
+      final service = serviceFor(picks: card.path);
+      await service.chooseCard();
+
+      await service.closeCard();
+
+      // Apple is as explicit about stopping a scope that never started as about
+      // never stopping one.
+      expect(bridge.stopped, 0);
+    });
   });
 
   group('losing the card', () {

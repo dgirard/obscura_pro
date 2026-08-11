@@ -18,6 +18,10 @@ class RecordingBridge implements SecureBookmarkBridge {
   /// Set to make [decode] fail the way a reformatted card makes it fail.
   Object? decodeThrows;
 
+  /// Set to make [startAccess] fail the way the platform does when it is handed
+  /// a path it never resolved a bookmark for.
+  Object? startAccessThrows;
+
   @override
   Future<String> encode(Directory directory) async {
     calls.add('encode:${directory.path}');
@@ -35,6 +39,8 @@ class RecordingBridge implements SecureBookmarkBridge {
   @override
   Future<void> startAccess(Directory directory) async {
     calls.add('start:${directory.path}');
+    final failure = startAccessThrows;
+    if (failure != null) throw failure;
     started++;
   }
 

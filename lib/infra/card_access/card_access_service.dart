@@ -30,6 +30,21 @@ class CardAccessService {
   StreamSubscription<VolumeEvent>? _watch;
   String? _openCardPath;
 
+  /// Whether a security scope is actually held for the open card.
+  ///
+  /// Tracked so the release stays balanced: Apple is explicit that stopping a
+  /// scope that was never started is as wrong as never stopping one.
+  bool _scopeHeld = false;
+
+  /// Why the scope could not be taken, when it could not.
+  ///
+  /// Kept rather than thrown: the session works without it, but the card will
+  /// not reopen by itself next launch, and that is worth being able to say.
+  String? scopeFailure;
+
+  /// Whether the open card will still be reachable after a relaunch.
+  bool get cardSurvivesRelaunch => _scopeHeld;
+
   /// Key under which the most recent card is remembered.
   static const lastCardKey = 'last_card';
 
@@ -87,7 +102,14 @@ class CardAccessService {
     // bookmark depends on the panel's implicit grant still being live, so
     // deferring it to first use fails.
     await _bookmarks.save(lastCardKey, path);
-    await _hold(path);
+
+    // Resolving the bookmark just written is not a redundant round trip.
+    // `startAccessingSecurityScopedResource` takes the URL that came *out of*
+    // resolving a bookmark and no other, so until the resolve has happened
+    // there is no scope to take — asking for one fails, and the platform
+    // reports it as a malformed argument, which is not what went wrong.
+    final resolved = await _bookmarks.resolve(lastCardKey);
+    await _hold(resolved is BookmarkResolved ? resolved.path : path);
     return check;
   }
 
@@ -106,9 +128,21 @@ class CardAccessService {
   Future<void> forgetLastCard() => _bookmarks.forget(lastCardKey);
 
   /// Takes the sandbox grant and starts listening for the card leaving.
+  ///
+  /// A grant that cannot be taken does not stop the session. Choosing the card
+  /// in the panel granted this process access to it already; the bookmark scope
+  /// is what makes that survive a relaunch. Refusing to open a readable card
+  /// over a scope that failed would trade a working session for a stricter one
+  /// that shows the user nothing.
   Future<void> _hold(String path) async {
     await closeCard();
-    await _bookmarks.beginAccess(path);
+    try {
+      await _bookmarks.beginAccess(path);
+      _scopeHeld = true;
+    } on Object catch (error) {
+      _scopeHeld = false;
+      scopeFailure = '$error';
+    }
     _openCardPath = path;
     _watch = _channel.watchVolumes().listen(_onVolumeEvent);
   }
@@ -131,8 +165,10 @@ class CardAccessService {
     await _watch?.cancel();
     _watch = null;
     final path = _openCardPath;
+    final held = _scopeHeld;
     _openCardPath = null;
-    if (path != null) await _bookmarks.endAccess(path);
+    _scopeHeld = false;
+    if (path != null && held) await _bookmarks.endAccess(path);
   }
 
   /// Runs [body] with the sandbox grant for [path] held and always released.
