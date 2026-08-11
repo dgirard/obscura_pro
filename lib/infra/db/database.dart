@@ -54,16 +54,29 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) => m.createAll(),
         onUpgrade: (m, from, to) async {
-          throw UnsupportedError(
-            'No migration is defined from schema $from to $to. '
-            'Add the step here before bumping schemaVersion.',
-          );
+          var version = from;
+
+          // v2 gave the thumbnail index the placeholder colour and pixel size
+          // the grid needs before it reads any cache file.
+          if (version == 1) {
+            await m.addColumn(thumbCacheEntries, thumbCacheEntries.pixelWidth);
+            await m.addColumn(thumbCacheEntries, thumbCacheEntries.pixelHeight);
+            await m.addColumn(thumbCacheEntries, thumbCacheEntries.averageColor);
+            version = 2;
+          }
+
+          if (version != to) {
+            throw UnsupportedError(
+              'No migration is defined from schema $version to $to. '
+              'Add the step here before bumping schemaVersion.',
+            );
+          }
         },
         beforeOpen: (details) async {
           // SQLite disables foreign keys per connection, so the cascades that

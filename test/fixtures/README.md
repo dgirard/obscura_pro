@@ -60,6 +60,33 @@ warm page cache — treat ~2 ms/file as the cold figure.)
 Filling the grid's first row needs only the first handful of headers, so
 PERF-1's "first row under 500 ms" has a wide margin.
 
+### Thumbnail pipeline
+
+Same card, 400-pixel grid cells (a Retina cell at the maquette's density),
+6 decode workers, **debug build** — release is faster still, since the JPEG
+decoder is pure Dart and gains most from AOT. Reproduce with:
+
+```
+Q3_DIR=/Volumes/<card> flutter test \
+  test/features/grid/thumbnail_benchmark_test.dart
+```
+
+| Measurement | Result |
+|---|---|
+| First 6 cells, cold, in parallel | **257 ms** (PERF-1 budget: 500 ms) |
+| Per cell, cold, serial | 59 ms |
+| Per cell, from disk cache | 0.45 ms |
+| Cache size per photograph | 87 KB |
+| Extrapolated for the whole card | 78 MB |
+
+The 720 × 480 stream is what gets decoded: its short side already exceeds a
+400-pixel cell, so the pipeline never reaches for the 60 Mpx stream to fill the
+grid. That is the single decision that keeps the cold path at 59 ms instead of
+seconds.
+
+78 MB per card sits far under `ThumbCache.defaultBudgetBytes` (1 GB), so
+eviction is a safety net rather than a path a photographer will meet.
+
 ### Stable-key fields
 
 `DateTimeOriginal` and the body serial are both present and readable from the
@@ -68,7 +95,7 @@ without a second pass.
 
 ## What a real card contains that the spec does not model
 
-Two findings from the same card that reach beyond the preview pipeline:
+Three findings from the same card that reach beyond the preview pipeline:
 
 - **`PRIVATE/` exists at the volume root** — `META_001.DAT`, `META_002.DAT`,
   `FASTLOAD.DAT`, and a `TEMP/` holding `.CPC`/`.CPG` files. The origin spec
@@ -77,8 +104,15 @@ Two findings from the same card that reach beyond the preview pipeline:
 - **Video files share the card** — 2 `.MP4` alongside the stills. The
   DNG-plus-JPG entity model does not cover them, so the scan has to decide
   whether they are catalogued, shown, or skipped.
+- **macOS creates `.fseventsd/fseventsd-uuid` at mount time**, before the app is
+  involved at all. It was there after a session that only ever read the card, so
+  CARTE-2's "zero parasite files" cannot be met by the app declining to write:
+  it has to be met by suppressing fsevents on the volume, or by cleaning up
+  before eject. No `.DS_Store` or `._*` appeared, and nothing under `DCIM/` or
+  `PRIVATE/` was modified.
 
-Both belong to the catalog and deletion units, not to preview extraction.
+All three belong to the catalog, deletion and card-safety units, not to preview
+extraction.
 
 ## Sample files
 

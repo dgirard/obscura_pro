@@ -228,6 +228,25 @@ class ThumbCacheEntries extends Table {
   IntColumn get byteSize => integer()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
+  /// Pixel size of the cached image, so the grid can reserve a cell of the right
+  /// aspect before any file is read.
+  IntColumn get pixelWidth => integer().nullable()();
+  IntColumn get pixelHeight => integer().nullable()();
+
+  /// Mean colour of the decoded preview, ARGB in a plain int.
+  ///
+  /// This is the placeholder a pending cell shows (R6). It is stored on the row
+  /// rather than derived from the cache file because the point of a placeholder
+  /// is to be on screen *before* anything has been read from disk: one query
+  /// over this table paints every pending cell in the grid.
+  ///
+  /// ThumbHash was the richer alternative and was not chosen. Its blurred
+  /// reconstruction only helps once a photo has already been decoded, which on
+  /// this app's timeline is also the moment the disk cache turns warm and the
+  /// real thumbnail arrives in a few milliseconds — so it would buy a prettier
+  /// placeholder exactly where no placeholder is visible.
+  IntColumn get averageColor => integer().nullable()();
+
   @override
   List<Set<Column<Object>>> get uniqueKeys => [
     {cleStable, variant},

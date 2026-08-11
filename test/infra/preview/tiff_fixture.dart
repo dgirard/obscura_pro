@@ -8,6 +8,7 @@ library;
 
 import 'dart:typed_data';
 
+import 'package:image/image.dart' as img;
 import 'package:obscura_pro/infra/preview/ifd_parser.dart' show TiffByteOrder;
 
 // --- Field values -----------------------------------------------------------
@@ -226,6 +227,34 @@ Uint8List fakeJpeg({required int payloadBytes, int fill = 0x5A}) => Uint8List.fr
   0xFF, 0xD9,
 ]);
 
+/// A genuinely decodable JPEG: a two-axis colour ramp at [width] x [height].
+///
+/// [fakeJpeg] is enough for the header parser, which only ever looks at byte
+/// ranges, but the thumbnail pipeline actually decodes what it finds — so the
+/// pipeline's fixtures need real image data. The ramp is deliberate: downscaling
+/// it leaves the same picture, so a test can assert that a thumbnail resembles
+/// its source rather than merely that some bytes came back.
+Uint8List realJpeg({
+  required int width,
+  required int height,
+  int quality = 90,
+  int redOffset = 0,
+}) {
+  final image = img.Image(width: width, height: height);
+  for (var y = 0; y < height; y++) {
+    for (var x = 0; x < width; x++) {
+      image.setPixelRgb(
+        x,
+        y,
+        (redOffset + x * 255 ~/ width) & 0xFF,
+        y * 255 ~/ height,
+        128,
+      );
+    }
+  }
+  return img.encodeJpg(image, quality: quality);
+}
+
 /// Wraps [tiffBlock] into a JPEG's APP1 `Exif\0\0` segment and closes the file
 /// with a token scan and EOI.
 Uint8List buildExifJpeg({Uint8List? tiffBlock, int scanBytes = 96}) {
@@ -292,15 +321,46 @@ SyntheticDng buildSyntheticDng({
   bool cyclicIfdChain = false,
   bool fullPreviewBeyondEndOfFile = false,
   bool extraPreviewInIfd1 = false,
+
+  /// Embeds real, decodable JPEGs at [thumbnailPixels] and [fullPreviewPixels]
+  /// instead of the SOI/EOI stubs, and declares those sizes in the IFDs.
+  ///
+  /// Off by default so the header-parser fixtures keep the Q3's real declared
+  /// dimensions, which the extractor tests assert against; the thumbnail
+  /// pipeline turns it on because it decodes what it reads.
+  bool decodable = false,
+  ({int width, int height}) thumbnailPixels = (width: 128, height: 85),
+  ({int width, int height}) fullPreviewPixels = (width: 640, height: 427),
+
+  /// Truncates the full-size preview's bytes while leaving its declared length
+  /// intact, which is how a card with a bad sector reads: the range is
+  /// advertised, the data is not there.
+  bool fullPreviewTruncated = false,
 }) {
-  final thumbnail = fakeJpeg(payloadBytes: 120, fill: 0x11);
+  final thumbnail = decodable
+      ? realJpeg(width: thumbnailPixels.width, height: thumbnailPixels.height)
+      : fakeJpeg(payloadBytes: 120, fill: 0x11);
   final rawImage = fakeJpeg(payloadBytes: 200, fill: 0x22);
-  final fullPreview = fakeJpeg(payloadBytes: 400, fill: 0x33);
+  final fullPreview = decodable
+      ? realJpeg(
+          width: fullPreviewPixels.width,
+          height: fullPreviewPixels.height,
+          redOffset: 90,
+        )
+      : fakeJpeg(payloadBytes: 400, fill: 0x33);
   final extraPreview = extraPreviewInIfd1 ? fakeJpeg(payloadBytes: 260, fill: 0x44) : null;
 
   final thumbnailBlob = BlobSpec(thumbnail);
   final rawBlob = BlobSpec(rawImage);
-  final fullBlob = BlobSpec(fullPreview);
+  // Same declared length, half the data: the byte range is intact and only the
+  // decode fails, which is what distinguishes a damaged preview from a damaged
+  // header.
+  final fullBlob = BlobSpec(
+    fullPreviewTruncated
+        ? (Uint8List(fullPreview.length)
+          ..setRange(0, fullPreview.length ~/ 2, fullPreview))
+        : fullPreview,
+  );
   final extraBlob = extraPreview == null ? null : BlobSpec(extraPreview);
 
   final exifIfd = IfdSpec({
@@ -321,8 +381,8 @@ SyntheticDng buildSyntheticDng({
 
   final previewIfd = IfdSpec({
     0x00FE: const LongField([1]),
-    0x0100: const LongField([7808]),
-    0x0101: const LongField([5202]),
+    0x0100: LongField([decodable ? fullPreviewPixels.width : 7808]),
+    0x0101: LongField([decodable ? fullPreviewPixels.height : 5202]),
     0x0201: fullPreviewBeyondEndOfFile
         ? const LongField([0x7FFFFF00])
         : PointerField.to(fullBlob),
@@ -343,8 +403,8 @@ SyntheticDng buildSyntheticDng({
 
   final ifd0 = IfdSpec({
     0x00FE: const LongField([1]),
-    0x0100: const LongField([320]),
-    0x0101: const LongField([213]),
+    0x0100: LongField([decodable ? thumbnailPixels.width : 320]),
+    0x0101: LongField([decodable ? thumbnailPixels.height : 213]),
     0x0103: const ShortField([7]),
     0x0106: const ShortField([6]), // YCbCr
     0x0111: PointerField.to(thumbnailBlob),

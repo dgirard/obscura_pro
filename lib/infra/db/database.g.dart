@@ -3180,6 +3180,39 @@ class $ThumbCacheEntriesTable extends ThumbCacheEntries
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _pixelWidthMeta = const VerificationMeta(
+    'pixelWidth',
+  );
+  @override
+  late final GeneratedColumn<int> pixelWidth = GeneratedColumn<int>(
+    'pixel_width',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _pixelHeightMeta = const VerificationMeta(
+    'pixelHeight',
+  );
+  @override
+  late final GeneratedColumn<int> pixelHeight = GeneratedColumn<int>(
+    'pixel_height',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _averageColorMeta = const VerificationMeta(
+    'averageColor',
+  );
+  @override
+  late final GeneratedColumn<int> averageColor = GeneratedColumn<int>(
+    'average_color',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -3188,6 +3221,9 @@ class $ThumbCacheEntriesTable extends ThumbCacheEntries
     cachePath,
     byteSize,
     createdAt,
+    pixelWidth,
+    pixelHeight,
+    averageColor,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3234,6 +3270,30 @@ class $ThumbCacheEntriesTable extends ThumbCacheEntries
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
       );
     }
+    if (data.containsKey('pixel_width')) {
+      context.handle(
+        _pixelWidthMeta,
+        pixelWidth.isAcceptableOrUnknown(data['pixel_width']!, _pixelWidthMeta),
+      );
+    }
+    if (data.containsKey('pixel_height')) {
+      context.handle(
+        _pixelHeightMeta,
+        pixelHeight.isAcceptableOrUnknown(
+          data['pixel_height']!,
+          _pixelHeightMeta,
+        ),
+      );
+    }
+    if (data.containsKey('average_color')) {
+      context.handle(
+        _averageColorMeta,
+        averageColor.isAcceptableOrUnknown(
+          data['average_color']!,
+          _averageColorMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -3273,6 +3333,18 @@ class $ThumbCacheEntriesTable extends ThumbCacheEntries
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      pixelWidth: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}pixel_width'],
+      ),
+      pixelHeight: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}pixel_height'],
+      ),
+      averageColor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}average_color'],
+      ),
     );
   }
 
@@ -3298,6 +3370,25 @@ class ThumbCacheEntry extends DataClass implements Insertable<ThumbCacheEntry> {
   final String cachePath;
   final int byteSize;
   final DateTime createdAt;
+
+  /// Pixel size of the cached image, so the grid can reserve a cell of the right
+  /// aspect before any file is read.
+  final int? pixelWidth;
+  final int? pixelHeight;
+
+  /// Mean colour of the decoded preview, ARGB in a plain int.
+  ///
+  /// This is the placeholder a pending cell shows (R6). It is stored on the row
+  /// rather than derived from the cache file because the point of a placeholder
+  /// is to be on screen *before* anything has been read from disk: one query
+  /// over this table paints every pending cell in the grid.
+  ///
+  /// ThumbHash was the richer alternative and was not chosen. Its blurred
+  /// reconstruction only helps once a photo has already been decoded, which on
+  /// this app's timeline is also the moment the disk cache turns warm and the
+  /// real thumbnail arrives in a few milliseconds — so it would buy a prettier
+  /// placeholder exactly where no placeholder is visible.
+  final int? averageColor;
   const ThumbCacheEntry({
     required this.id,
     required this.cleStable,
@@ -3305,6 +3396,9 @@ class ThumbCacheEntry extends DataClass implements Insertable<ThumbCacheEntry> {
     required this.cachePath,
     required this.byteSize,
     required this.createdAt,
+    this.pixelWidth,
+    this.pixelHeight,
+    this.averageColor,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3319,6 +3413,15 @@ class ThumbCacheEntry extends DataClass implements Insertable<ThumbCacheEntry> {
     map['cache_path'] = Variable<String>(cachePath);
     map['byte_size'] = Variable<int>(byteSize);
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || pixelWidth != null) {
+      map['pixel_width'] = Variable<int>(pixelWidth);
+    }
+    if (!nullToAbsent || pixelHeight != null) {
+      map['pixel_height'] = Variable<int>(pixelHeight);
+    }
+    if (!nullToAbsent || averageColor != null) {
+      map['average_color'] = Variable<int>(averageColor);
+    }
     return map;
   }
 
@@ -3330,6 +3433,15 @@ class ThumbCacheEntry extends DataClass implements Insertable<ThumbCacheEntry> {
       cachePath: Value(cachePath),
       byteSize: Value(byteSize),
       createdAt: Value(createdAt),
+      pixelWidth: pixelWidth == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pixelWidth),
+      pixelHeight: pixelHeight == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pixelHeight),
+      averageColor: averageColor == null && nullToAbsent
+          ? const Value.absent()
+          : Value(averageColor),
     );
   }
 
@@ -3347,6 +3459,9 @@ class ThumbCacheEntry extends DataClass implements Insertable<ThumbCacheEntry> {
       cachePath: serializer.fromJson<String>(json['cachePath']),
       byteSize: serializer.fromJson<int>(json['byteSize']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      pixelWidth: serializer.fromJson<int?>(json['pixelWidth']),
+      pixelHeight: serializer.fromJson<int?>(json['pixelHeight']),
+      averageColor: serializer.fromJson<int?>(json['averageColor']),
     );
   }
   @override
@@ -3361,6 +3476,9 @@ class ThumbCacheEntry extends DataClass implements Insertable<ThumbCacheEntry> {
       'cachePath': serializer.toJson<String>(cachePath),
       'byteSize': serializer.toJson<int>(byteSize),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'pixelWidth': serializer.toJson<int?>(pixelWidth),
+      'pixelHeight': serializer.toJson<int?>(pixelHeight),
+      'averageColor': serializer.toJson<int?>(averageColor),
     };
   }
 
@@ -3371,6 +3489,9 @@ class ThumbCacheEntry extends DataClass implements Insertable<ThumbCacheEntry> {
     String? cachePath,
     int? byteSize,
     DateTime? createdAt,
+    Value<int?> pixelWidth = const Value.absent(),
+    Value<int?> pixelHeight = const Value.absent(),
+    Value<int?> averageColor = const Value.absent(),
   }) => ThumbCacheEntry(
     id: id ?? this.id,
     cleStable: cleStable ?? this.cleStable,
@@ -3378,6 +3499,9 @@ class ThumbCacheEntry extends DataClass implements Insertable<ThumbCacheEntry> {
     cachePath: cachePath ?? this.cachePath,
     byteSize: byteSize ?? this.byteSize,
     createdAt: createdAt ?? this.createdAt,
+    pixelWidth: pixelWidth.present ? pixelWidth.value : this.pixelWidth,
+    pixelHeight: pixelHeight.present ? pixelHeight.value : this.pixelHeight,
+    averageColor: averageColor.present ? averageColor.value : this.averageColor,
   );
   ThumbCacheEntry copyWithCompanion(ThumbCacheEntriesCompanion data) {
     return ThumbCacheEntry(
@@ -3387,6 +3511,15 @@ class ThumbCacheEntry extends DataClass implements Insertable<ThumbCacheEntry> {
       cachePath: data.cachePath.present ? data.cachePath.value : this.cachePath,
       byteSize: data.byteSize.present ? data.byteSize.value : this.byteSize,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      pixelWidth: data.pixelWidth.present
+          ? data.pixelWidth.value
+          : this.pixelWidth,
+      pixelHeight: data.pixelHeight.present
+          ? data.pixelHeight.value
+          : this.pixelHeight,
+      averageColor: data.averageColor.present
+          ? data.averageColor.value
+          : this.averageColor,
     );
   }
 
@@ -3398,14 +3531,26 @@ class ThumbCacheEntry extends DataClass implements Insertable<ThumbCacheEntry> {
           ..write('variant: $variant, ')
           ..write('cachePath: $cachePath, ')
           ..write('byteSize: $byteSize, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('pixelWidth: $pixelWidth, ')
+          ..write('pixelHeight: $pixelHeight, ')
+          ..write('averageColor: $averageColor')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, cleStable, variant, cachePath, byteSize, createdAt);
+  int get hashCode => Object.hash(
+    id,
+    cleStable,
+    variant,
+    cachePath,
+    byteSize,
+    createdAt,
+    pixelWidth,
+    pixelHeight,
+    averageColor,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -3415,7 +3560,10 @@ class ThumbCacheEntry extends DataClass implements Insertable<ThumbCacheEntry> {
           other.variant == this.variant &&
           other.cachePath == this.cachePath &&
           other.byteSize == this.byteSize &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.pixelWidth == this.pixelWidth &&
+          other.pixelHeight == this.pixelHeight &&
+          other.averageColor == this.averageColor);
 }
 
 class ThumbCacheEntriesCompanion extends UpdateCompanion<ThumbCacheEntry> {
@@ -3425,6 +3573,9 @@ class ThumbCacheEntriesCompanion extends UpdateCompanion<ThumbCacheEntry> {
   final Value<String> cachePath;
   final Value<int> byteSize;
   final Value<DateTime> createdAt;
+  final Value<int?> pixelWidth;
+  final Value<int?> pixelHeight;
+  final Value<int?> averageColor;
   const ThumbCacheEntriesCompanion({
     this.id = const Value.absent(),
     this.cleStable = const Value.absent(),
@@ -3432,6 +3583,9 @@ class ThumbCacheEntriesCompanion extends UpdateCompanion<ThumbCacheEntry> {
     this.cachePath = const Value.absent(),
     this.byteSize = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.pixelWidth = const Value.absent(),
+    this.pixelHeight = const Value.absent(),
+    this.averageColor = const Value.absent(),
   });
   ThumbCacheEntriesCompanion.insert({
     this.id = const Value.absent(),
@@ -3440,6 +3594,9 @@ class ThumbCacheEntriesCompanion extends UpdateCompanion<ThumbCacheEntry> {
     required String cachePath,
     required int byteSize,
     this.createdAt = const Value.absent(),
+    this.pixelWidth = const Value.absent(),
+    this.pixelHeight = const Value.absent(),
+    this.averageColor = const Value.absent(),
   }) : cleStable = Value(cleStable),
        variant = Value(variant),
        cachePath = Value(cachePath),
@@ -3451,6 +3608,9 @@ class ThumbCacheEntriesCompanion extends UpdateCompanion<ThumbCacheEntry> {
     Expression<String>? cachePath,
     Expression<int>? byteSize,
     Expression<DateTime>? createdAt,
+    Expression<int>? pixelWidth,
+    Expression<int>? pixelHeight,
+    Expression<int>? averageColor,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -3459,6 +3619,9 @@ class ThumbCacheEntriesCompanion extends UpdateCompanion<ThumbCacheEntry> {
       if (cachePath != null) 'cache_path': cachePath,
       if (byteSize != null) 'byte_size': byteSize,
       if (createdAt != null) 'created_at': createdAt,
+      if (pixelWidth != null) 'pixel_width': pixelWidth,
+      if (pixelHeight != null) 'pixel_height': pixelHeight,
+      if (averageColor != null) 'average_color': averageColor,
     });
   }
 
@@ -3469,6 +3632,9 @@ class ThumbCacheEntriesCompanion extends UpdateCompanion<ThumbCacheEntry> {
     Value<String>? cachePath,
     Value<int>? byteSize,
     Value<DateTime>? createdAt,
+    Value<int?>? pixelWidth,
+    Value<int?>? pixelHeight,
+    Value<int?>? averageColor,
   }) {
     return ThumbCacheEntriesCompanion(
       id: id ?? this.id,
@@ -3477,6 +3643,9 @@ class ThumbCacheEntriesCompanion extends UpdateCompanion<ThumbCacheEntry> {
       cachePath: cachePath ?? this.cachePath,
       byteSize: byteSize ?? this.byteSize,
       createdAt: createdAt ?? this.createdAt,
+      pixelWidth: pixelWidth ?? this.pixelWidth,
+      pixelHeight: pixelHeight ?? this.pixelHeight,
+      averageColor: averageColor ?? this.averageColor,
     );
   }
 
@@ -3503,6 +3672,15 @@ class ThumbCacheEntriesCompanion extends UpdateCompanion<ThumbCacheEntry> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (pixelWidth.present) {
+      map['pixel_width'] = Variable<int>(pixelWidth.value);
+    }
+    if (pixelHeight.present) {
+      map['pixel_height'] = Variable<int>(pixelHeight.value);
+    }
+    if (averageColor.present) {
+      map['average_color'] = Variable<int>(averageColor.value);
+    }
     return map;
   }
 
@@ -3514,7 +3692,10 @@ class ThumbCacheEntriesCompanion extends UpdateCompanion<ThumbCacheEntry> {
           ..write('variant: $variant, ')
           ..write('cachePath: $cachePath, ')
           ..write('byteSize: $byteSize, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('pixelWidth: $pixelWidth, ')
+          ..write('pixelHeight: $pixelHeight, ')
+          ..write('averageColor: $averageColor')
           ..write(')'))
         .toString();
   }
@@ -6013,6 +6194,9 @@ typedef $$ThumbCacheEntriesTableCreateCompanionBuilder =
       required String cachePath,
       required int byteSize,
       Value<DateTime> createdAt,
+      Value<int?> pixelWidth,
+      Value<int?> pixelHeight,
+      Value<int?> averageColor,
     });
 typedef $$ThumbCacheEntriesTableUpdateCompanionBuilder =
     ThumbCacheEntriesCompanion Function({
@@ -6022,6 +6206,9 @@ typedef $$ThumbCacheEntriesTableUpdateCompanionBuilder =
       Value<String> cachePath,
       Value<int> byteSize,
       Value<DateTime> createdAt,
+      Value<int?> pixelWidth,
+      Value<int?> pixelHeight,
+      Value<int?> averageColor,
     });
 
 final class $$ThumbCacheEntriesTableReferences
@@ -6090,6 +6277,21 @@ class $$ThumbCacheEntriesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<int> get pixelWidth => $composableBuilder(
+    column: $table.pixelWidth,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get pixelHeight => $composableBuilder(
+    column: $table.pixelHeight,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get averageColor => $composableBuilder(
+    column: $table.averageColor,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$PhotosTableFilterComposer get cleStable {
     final $$PhotosTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -6148,6 +6350,21 @@ class $$ThumbCacheEntriesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get pixelWidth => $composableBuilder(
+    column: $table.pixelWidth,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get pixelHeight => $composableBuilder(
+    column: $table.pixelHeight,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get averageColor => $composableBuilder(
+    column: $table.averageColor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$PhotosTableOrderingComposer get cleStable {
     final $$PhotosTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -6195,6 +6412,21 @@ class $$ThumbCacheEntriesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get pixelWidth => $composableBuilder(
+    column: $table.pixelWidth,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get pixelHeight => $composableBuilder(
+    column: $table.pixelHeight,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get averageColor => $composableBuilder(
+    column: $table.averageColor,
+    builder: (column) => column,
+  );
 
   $$PhotosTableAnnotationComposer get cleStable {
     final $$PhotosTableAnnotationComposer composer = $composerBuilder(
@@ -6259,6 +6491,9 @@ class $$ThumbCacheEntriesTableTableManager
                 Value<String> cachePath = const Value.absent(),
                 Value<int> byteSize = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<int?> pixelWidth = const Value.absent(),
+                Value<int?> pixelHeight = const Value.absent(),
+                Value<int?> averageColor = const Value.absent(),
               }) => ThumbCacheEntriesCompanion(
                 id: id,
                 cleStable: cleStable,
@@ -6266,6 +6501,9 @@ class $$ThumbCacheEntriesTableTableManager
                 cachePath: cachePath,
                 byteSize: byteSize,
                 createdAt: createdAt,
+                pixelWidth: pixelWidth,
+                pixelHeight: pixelHeight,
+                averageColor: averageColor,
               ),
           createCompanionCallback:
               ({
@@ -6275,6 +6513,9 @@ class $$ThumbCacheEntriesTableTableManager
                 required String cachePath,
                 required int byteSize,
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<int?> pixelWidth = const Value.absent(),
+                Value<int?> pixelHeight = const Value.absent(),
+                Value<int?> averageColor = const Value.absent(),
               }) => ThumbCacheEntriesCompanion.insert(
                 id: id,
                 cleStable: cleStable,
@@ -6282,6 +6523,9 @@ class $$ThumbCacheEntriesTableTableManager
                 cachePath: cachePath,
                 byteSize: byteSize,
                 createdAt: createdAt,
+                pixelWidth: pixelWidth,
+                pixelHeight: pixelHeight,
+                averageColor: averageColor,
               ),
           withReferenceMapper: (p0) => p0
               .map(

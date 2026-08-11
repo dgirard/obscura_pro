@@ -1,3 +1,5 @@
+import 'dart:io';
+
 // `show Value`: drift also exports `isNull`/`isNotNull` as SQL expression
 // builders, which would shadow the matchers of the same name.
 import 'package:drift/drift.dart' show Value;
@@ -61,9 +63,51 @@ void main() {
     );
   }
 
+  group('migration', () {
+    test('upgrades a v1 database in place, keeping the rows it already held',
+        () async {
+      final dir = await Directory.systemTemp.createTemp('obscura_migration');
+      addTearDown(() => dir.delete(recursive: true));
+      final file = File('${dir.path}/v1.sqlite');
+
+      // The v1 schema, written by hand: the thumbnail index before it carried a
+      // placeholder colour or a pixel size.
+      final upgraded = AppDatabase.forTesting(NativeDatabase(file, setup: (raw) {
+        if (raw.userVersion != 0) return;
+        raw
+          ..execute('CREATE TABLE photo (id INTEGER NOT NULL PRIMARY KEY '
+              'AUTOINCREMENT, cle_stable TEXT NOT NULL UNIQUE, '
+              'radical_dcf TEXT NOT NULL)')
+          ..execute('CREATE TABLE thumb_cache (id INTEGER NOT NULL PRIMARY KEY '
+              'AUTOINCREMENT, cle_stable TEXT NOT NULL REFERENCES photo '
+              '(cle_stable) ON DELETE CASCADE, variant TEXT NOT NULL, '
+              'cache_path TEXT NOT NULL, byte_size INTEGER NOT NULL, '
+              "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
+              'UNIQUE (cle_stable, variant))')
+          ..execute("INSERT INTO photo (cle_stable, radical_dcf) "
+              "VALUES ('legacy-key', '100LEICA/L1000001')")
+          ..execute('INSERT INTO thumb_cache (cle_stable, variant, cache_path, '
+              "byte_size) VALUES ('legacy-key', 'small', '/tmp/legacy.jpg', 42)")
+          ..userVersion = 1;
+      }));
+      addTearDown(upgraded.close);
+
+      final row =
+          await upgraded.thumbCacheDao.entryFor('legacy-key', ThumbVariant.small);
+
+      expect(row, isNotNull);
+      expect(row!.byteSize, 42);
+      // The new columns exist and are empty rather than defaulted to a wrong
+      // colour: a cache row predating the placeholder simply has none, and the
+      // grid falls back to the neutral cell it uses for an unknown photograph.
+      expect(row.averageColor, isNull);
+      expect(row.pixelWidth, isNull);
+    });
+  });
+
   group('schema', () {
-    test('creates every table cleanly at schemaVersion 1', () async {
-      expect(db.schemaVersion, 1);
+    test('creates every table cleanly at schemaVersion 2', () async {
+      expect(db.schemaVersion, 2);
 
       final tables = await db
           .customSelect("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
@@ -85,7 +129,7 @@ void main() {
       // `user_version` is what drift compares against `schemaVersion` on the
       // next open; a fresh create that leaves it at 0 would re-run migrations.
       final version = await db.customSelect('PRAGMA user_version').getSingle();
-      expect(version.read<int>('user_version'), 1);
+      expect(version.read<int>('user_version'), db.schemaVersion);
     });
 
     test('enforces foreign keys on the connection', () async {

@@ -13,6 +13,7 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_riverpod: ^3.0.0
+  image: ^4.9.1
   macos_secure_bookmarks: ^0.2.1
   path: ^1.9.1
   path_provider: ^2.1.6

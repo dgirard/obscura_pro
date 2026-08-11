@@ -32,6 +32,11 @@ class FakeCard {
     bool jpeg = true,
     String captureTime = syntheticDngDateTimeOriginal,
     String serial = syntheticDngSerial,
+
+    /// Embeds real, decodable JPEG previews. Off by default because the catalog
+    /// scan never decodes anything; the thumbnail pipeline's fixtures turn it on.
+    bool decodable = false,
+    bool fullPreviewTruncated = false,
   }) async {
     final dir = Directory('${root.path}/DCIM/$folder');
     await dir.create(recursive: true);
@@ -40,6 +45,8 @@ class FakeCard {
       final dng = buildSyntheticDng(
         dateTimeOriginal: captureTime,
         serialNumber: serial,
+        decodable: decodable,
+        fullPreviewTruncated: fullPreviewTruncated,
       );
       await File('${dir.path}/$radical.DNG').writeAsBytes(dng.bytes);
     }
