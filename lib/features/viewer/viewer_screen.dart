@@ -273,6 +273,8 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
                       position: '${index + 1} / ${widget.photos.length}',
                       obscura: obscura,
                       showExif: showExif,
+                      marked: marked,
+                      onToggleMark: _toggleMark,
                       onClose: _close,
                     ),
                   ],
@@ -452,6 +454,8 @@ class _Chrome extends ConsumerWidget {
     required this.position,
     required this.obscura,
     required this.showExif,
+    required this.marked,
+    required this.onToggleMark,
     required this.onClose,
   });
 
@@ -459,6 +463,8 @@ class _Chrome extends ConsumerWidget {
   final String position;
   final bool obscura;
   final bool showExif;
+  final bool marked;
+  final VoidCallback onToggleMark;
   final VoidCallback onClose;
 
   @override
@@ -477,6 +483,19 @@ class _Chrome extends ConsumerWidget {
                   .copyWith(color: ObscuraColors.textSecondary),
             ),
             const SizedBox(width: ObscuraSpacing.overlayPadding),
+            // The same control as on the grid cell, in the same red, doing the
+            // same thing. A photographer decides a frame's fate while looking
+            // at it full size at least as often as from the grid, and having to
+            // go back to find the button would be the reason they stopped
+            // looking properly.
+            _ChromeButton(
+              tooltip: marked
+                  ? 'Ne plus supprimer (⌫)'
+                  : 'Marquer à supprimer (⌫)',
+              icon: marked ? Icons.delete : Icons.delete_outline,
+              active: marked,
+              onPressed: onToggleMark,
+            ),
             _ChromeButton(
               tooltip: 'Vision obscura (O)',
               icon: Icons.flip_camera_android_outlined,

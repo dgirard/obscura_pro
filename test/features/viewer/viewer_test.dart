@@ -179,6 +179,30 @@ void main() {
       expect(find.byKey(const Key('viewer-marked')), findsOneWidget);
     });
 
+    testWidgets('offers the same mark control as the grid does', (tester) async {
+      final container = await _pump(tester, photos);
+
+      // A photographer decides a frame's fate while looking at it full size at
+      // least as often as from the grid; having to go back to find the control
+      // is the reason they would stop looking properly.
+      final button = find.byWidgetPredicate(
+        (w) => w is Tooltip && w.message == 'Marquer à supprimer (⌫)',
+      );
+      expect(button, findsOneWidget);
+
+      await tester.tap(button);
+      await tester.pump();
+
+      expect(container.read(markedForDeletionProvider), hasLength(1));
+      expect(find.byKey(const Key('viewer-marked')), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Tooltip && w.message == 'Ne plus supprimer (⌫)',
+        ),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('states the exposure over the frame', (tester) async {
       await _pump(tester, photos);
 

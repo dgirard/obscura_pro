@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/catalog/photo_entity.dart';
 import '../features/grid/grid_screen.dart';
 import '../features/volume_select/card_selection.dart';
+import '../features/viewer/viewer_screen.dart' show viewerOpenProvider;
 import '../features/volume_select/volume_screen.dart' show formatBytes;
 import 'theme.dart';
 
@@ -137,7 +138,12 @@ class LibraryStatusBar extends ConsumerWidget {
       photoCount: photos.length,
       markedCount: marked.length,
       markedBytes: markedBytes,
-      hints: '↑↓←→ naviguer   ⏎ ouvrir   ⌫ marquer à supprimer',
+      // Where the user is decides which map applies: Enter opens from the grid
+      // and returns from the viewer, and stating the wrong one is worse than
+      // stating none.
+      hints: ref.watch(viewerOpenProvider)
+          ? '←→ naviguer   O obscura   ⌘+/⌘− zoom   ⏎ retour   ⌫ marquer'
+          : '↑↓←→ naviguer   ⏎ ouvrir   ⌫ marquer à supprimer',
       cardFreeBytes: volume?.freeBytes,
       // The volume list can lag a freshly opened card; the path's last segment
       // is the same name, and a status bar that goes briefly blank reads as a
