@@ -12,6 +12,49 @@ import 'stable_key.dart';
 /// closes them; it creates nothing, renames nothing and never descends outside
 /// `DCIM/`. The camera's own bookkeeping — `PRIVATE/`, with its index and
 /// fastload files — is not ours to read or repair.
+/// The stable key of whatever is at [path] right now.
+///
+/// The same computation the scan does, exposed on its own because deletion has
+/// to repeat it at the moment of unlinking. A file marked an hour ago and a
+/// file sitting at that path now are not necessarily the same photograph: a
+/// camera whose numbering was reset writes `L1000001.DNG` again, and deleting
+/// on the strength of a path would take the new frame instead of the old one.
+///
+/// Null when the file is gone or its header cannot be read at all.
+Future<StableKey?> stableKeyOfFile(
+  String path, {
+  required String dcfRadical,
+}) async {
+  final file = File(path);
+  RandomAccessFile? handle;
+  try {
+    final stat = await file.stat();
+    if (stat.type == FileSystemEntityType.notFound) return null;
+
+    handle = await file.open();
+    final prefix = await handle.read(kHeaderPrefixBytes);
+    final result = scanPhotoHeader(prefix, fileLength: stat.size);
+    final capture = result is PreviewScanSuccess ? result.header.dateTimeOriginal : null;
+
+    if (capture == null) {
+      return StableKey.fromFileStat(
+        dcfRadical: dcfRadical,
+        sizeBytes: stat.size,
+        modified: stat.modified,
+      );
+    }
+    return StableKey.fromExif(
+      dcfRadical: dcfRadical,
+      captureTime: capture,
+      bodySerial: (result as PreviewScanSuccess).header.bodySerial,
+    );
+  } on FileSystemException {
+    return null;
+  } finally {
+    await handle?.close();
+  }
+}
+
 class DcfScanner {
   const DcfScanner({this.concurrency = 8});
 
