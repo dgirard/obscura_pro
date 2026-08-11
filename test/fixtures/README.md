@@ -1,67 +1,87 @@
-# Test fixtures — preview extraction (U2)
+# Preview fixtures
 
-## State of this unit
+The parser tests forge their own TIFF/DNG bytes in `tiff_fixture.dart`. That
+proves the reader handles the format's grammar — both byte orders, SubIFD
+chains, strip-encoded previews, truncation, cyclic chains — without needing an
+80 MB file in the repository.
 
-U2 was planned as a spike against an authentic Leica Q3 `.DNG`. **No Q3 DNG has
-been available on this machine**, so what shipped is the parser and extractor
-(`lib/infra/preview/`) plus a suite that runs entirely on fixtures forged
-byte-for-byte in `test/infra/preview/tiff_fixture.dart`.
+What forged bytes cannot say is what a genuine Leica Q3 file actually contains.
+Those figures are below, and they were measured, not estimated.
 
-That suite proves the parser handles the *format*. It cannot prove anything
-about a Q3 file in particular. Everything below is **unmeasured** — not
-estimated, not inferred, not derived from the spec. Nothing in the app should
-cite these as facts until someone has run them against a real card.
+## Measured on real hardware
 
-No sample DNG is committed here: a Q3 raw is ~85 MB and does not belong in git.
-Drop one in this directory when you have the card — and add an ignore rule for
-it first, because `.gitignore` does not currently cover `*.DNG`.
+Leica Q3, body serial `REDACTED`, card written 2026-04, exFAT, 941 DNG + 941 JPG
+(plus 2 MP4) in `DCIM/100LEICA`. Reproduce with:
 
-## Checklist — needs a real Q3 DNG
-
-- [ ] **Pixel dimensions of every embedded preview.** How many preview streams a
-      Q3 DNG actually carries, and the width/height of each. The app assumes at
-      least two (a small one for the grid, a full-size one for the viewer); if
-      the full-size preview turns out not to exist, that is the plan's stop
-      condition (KTD-1 collapses and the viewer has nothing to show).
-      *Unmeasured.*
-
-- [ ] **Header prefix size.** `kHeaderPrefixBytes` in
-      `lib/infra/preview/preview_extractor.dart` is currently 256 KiB, a
-      placeholder. The real value is the smallest prefix that covers IFD0, the
-      SubIFD chain, the EXIF IFD and every preview offset in one read. Measure
-      it by feeding growing prefixes to `scanPhotoHeader` until it stops
-      returning `PreviewScanNeedsMoreBytes` — the result names the byte count it
-      wants, so this is a loop, not a guess. *Unmeasured.*
-
-- [ ] **Scan time for a few hundred files at that read size.** The catalog scan
-      (U5) does one bounded read per file off an SD card over a USB reader; the
-      number that matters is wall-clock time for ~300 files on the real card,
-      not on an SSD copy. *Unmeasured.*
-
-- [ ] **Whether the `image` package can re-embed the essential EXIF tags into an
-      exported JPEG.** U11 exports crops from the full-size preview and must
-      carry `DateTimeOriginal`, the body serial, focal length, shutter, aperture
-      and ISO into the output. If `image` cannot write them back, the fallback
-      has to be picked before U11 starts. *Unverified.*
-
-- [ ] **Byte order and tag layout as Leica actually writes them.** The fixtures
-      exercise both `II` and `MM`, `JPEGInterchangeFormat` and single-strip
-      `StripOffsets`, and both serial tags (`BodySerialNumber` 0xA431 and DNG's
-      `CameraSerialNumber` 0xC62F). Which combination a Q3 uses is unknown; the
-      extractor accepts all of them, so this is a confirmation, not a risk.
-      *Unobserved.*
-
-## How to run the checks once a DNG is available
-
-The extractor is pure Dart over a byte prefix and has no Flutter dependency, so
-a real file can be dropped straight into a test:
-
-```dart
-final file = File('test/fixtures/L1000001.DNG');
-final length = file.lengthSync();
-final prefix = file.openSync().readSync(kHeaderPrefixBytes);
-final result = scanPhotoHeader(prefix, fileLength: length);
+```
+Q3_DIR=/Volumes/<card>/DCIM/100LEICA flutter test \
+  test/infra/preview/q3_measurement_test.dart
 ```
 
-`result` is one of `PreviewScanSuccess`, `PreviewScanNeedsMoreBytes` (grow the
-prefix and retry — it names the byte count) or `PreviewScanFailure`.
+### Embedded preview streams
+
+Every DNG carries three, all strip-encoded (`jpegStrips`), all with the
+reduced-resolution bit set:
+
+| Role | Dimensions | Size |
+|---|---|---|
+| Grid thumbnail | 720 × 480 | 0.16 MB |
+| Intermediate | 1620 × 1080 | 0.75 MB |
+| Viewer / export source | 9520 × 6336 | 13.71 MB |
+
+The full-resolution stream confirms the premise the whole app rests on: a
+60.3 Mpx encoded frame is already in the file, so nothing ever has to demosaic
+the RAW to put a photograph on screen.
+
+Note that all three streams are reached through `StripOffsets`/`StripByteCounts`,
+not `JPEGInterchangeFormat`. This is why the photometric-interpretation check in
+`preview_extractor.dart` is load-bearing rather than defensive: the raw CFA image
+is also strip-encoded with `Compression 7`, so without it the mosaic would be
+handed to a JPEG decoder as if it were a picture.
+
+### Header read size
+
+8 KB resolves the stable-key EXIF fields and all three preview ranges on
+**941 of 941 files**. `kHeaderPrefixBytes` is set to 16 KB for margin against
+other bodies and firmware.
+
+### Scan cost
+
+941 files, headers only, read from the card over USB:
+
+| Read size | Total | Per file |
+|---|---|---|
+| 8 KB | 1840 ms | 2.0 ms |
+| 64 KB | 2325 ms | 2.5 ms |
+
+(A 16 KB pass measured 174 ms, but it ran after the 8 KB pass and was reading a
+warm page cache — treat ~2 ms/file as the cold figure.)
+
+Filling the grid's first row needs only the first handful of headers, so
+PERF-1's "first row under 500 ms" has a wide margin.
+
+### Stable-key fields
+
+`DateTimeOriginal` and the body serial are both present and readable from the
+bounded header read, so the composite photo key is computable during the scan
+without a second pass.
+
+## What a real card contains that the spec does not model
+
+Two findings from the same card that reach beyond the preview pipeline:
+
+- **`PRIVATE/` exists at the volume root** — `META_001.DAT`, `META_002.DAT`,
+  `FASTLOAD.DAT`, and a `TEMP/` holding `.CPC`/`.CPG` files. The origin spec
+  states the camera writes no annex files. It does. The catalog must ignore this
+  folder, and deletion must never touch it: it is the camera's own bookkeeping.
+- **Video files share the card** — 2 `.MP4` alongside the stills. The
+  DNG-plus-JPG entity model does not cover them, so the scan has to decide
+  whether they are catalogued, shown, or skipped.
+
+Both belong to the catalog and deletion units, not to preview extraction.
+
+## Sample files
+
+Sample DNG/JPG files are deliberately not committed — one DNG is ~80 MB and
+would live in the history forever. `.gitignore` excludes `*.DNG`, `*.dng` and
+`test/fixtures/samples/`; copy a file there locally if you want one at hand.

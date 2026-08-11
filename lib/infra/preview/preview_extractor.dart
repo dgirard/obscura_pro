@@ -5,12 +5,16 @@ import 'ifd_parser.dart';
 /// How many bytes of each file the catalog scan reads to obtain, in one go, the
 /// stable-key EXIF fields and every embedded preview's byte range.
 ///
-/// PENDING MEASUREMENT: no authentic Leica Q3 DNG has been measured on this
-/// machine, so this is a placeholder sized to comfortably cover IFD0, the
-/// SubIFD chain and the EXIF IFD of a typical DNG -- not an observed figure.
-/// See `test/fixtures/README.md`. Undersizing it is not a correctness risk:
+/// Measured on a Leica Q3 (firmware as of 2026-04, body REDACTED): 8 KB already
+/// resolves IFD0, the SubIFD chain, the EXIF IFD and all three preview ranges
+/// on every one of 941 files from a full card. This doubles that for margin
+/// against other bodies and firmware, and is still 16x smaller than the
+/// pre-measurement guess.
+///
+/// Undersizing is not a correctness risk in any case:
 /// [PreviewScanNeedsMoreBytes] names the exact prefix length to retry with.
-const int kHeaderPrefixBytes = 256 * 1024;
+/// See `test/fixtures/README.md` for the full measurement.
+const int kHeaderPrefixBytes = 16 * 1024;
 
 /// Depth limit on SubIFD nesting.
 ///
