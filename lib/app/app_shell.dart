@@ -40,6 +40,19 @@ class AppShell extends StatelessWidget {
   }
 }
 
+/// Which destination the sidebar is on.
+class LibrarySectionNotifier extends Notifier<LibrarySection> {
+  @override
+  LibrarySection build() => LibrarySection.library;
+
+  void go(LibrarySection section) => state = section;
+}
+
+final librarySectionProvider =
+    NotifierProvider<LibrarySectionNotifier, LibrarySection>(
+  LibrarySectionNotifier.new,
+);
+
 /// Where the session lives.
 ///
 /// Three destinations, not the maquette's seven. Recents, Favorites, Import and
@@ -55,6 +68,7 @@ class _Sidebar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final selection = ref.watch(cardSelectionProvider);
     final cardPath = selection is CardSelectionOpened ? selection.path : null;
+    final current = ref.watch(librarySectionProvider);
 
     return Container(
       width: ObscuraSpacing.sidebarWidth,
@@ -67,22 +81,18 @@ class _Sidebar extends ConsumerWidget {
           const SizedBox(height: ObscuraSpacing.overlayPadding),
           _CardHeader(cardPath: cardPath),
           const SizedBox(height: ObscuraSpacing.overlayPadding),
-          const _SectionEntry(
-            section: LibrarySection.library,
-            icon: Icons.photo_library_outlined,
-            label: 'Bibliothèque',
-            selected: true,
-          ),
-          const _SectionEntry(
-            section: LibrarySection.card,
-            icon: Icons.sd_card_outlined,
-            label: 'Carte SD',
-          ),
-          const _SectionEntry(
-            section: LibrarySection.trash,
-            icon: Icons.delete_outline,
-            label: 'Corbeille',
-          ),
+          for (final (section, icon, label) in const [
+            (LibrarySection.library, Icons.photo_library_outlined, 'Bibliothèque'),
+            (LibrarySection.card, Icons.sd_card_outlined, 'Carte SD'),
+            (LibrarySection.trash, Icons.delete_outline, 'Corbeille'),
+          ])
+            _SectionEntry(
+              section: section,
+              icon: icon,
+              label: label,
+              selected: current == section,
+              onTap: () => ref.read(librarySectionProvider.notifier).go(section),
+            ),
         ],
       ),
     );
@@ -142,6 +152,7 @@ class _SectionEntry extends StatelessWidget {
     required this.section,
     required this.icon,
     required this.label,
+    required this.onTap,
     this.selected = false,
   });
 
@@ -149,9 +160,20 @@ class _SectionEntry extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: _body(context),
+      ),
+    );
+  }
+
+  Widget _body(BuildContext context) {
     return Container(
       key: Key('sidebar-${section.name}'),
       margin: const EdgeInsets.only(bottom: ObscuraSpacing.controlGap / 2),

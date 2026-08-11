@@ -152,6 +152,7 @@ final class CopyFailed extends CopyOutcome {
 Future<CopyOutcome> copyVerified({
   required File source,
   required File destination,
+  String? tempName,
 }) async {
   final String sourceHash;
   final int sourceBytes;
@@ -163,7 +164,11 @@ Future<CopyOutcome> copyVerified({
     return _volumeGoneOr(source.path, error, (r) => CopyFailed(r));
   }
 
-  final temp = File('${destination.path}.part');
+  // On a card the temp name must be the reserved one, so that debris left by a
+  // crash is identifiable as ours rather than looking like a camera file.
+  final temp = tempName == null
+      ? File('${destination.path}.part')
+      : File(p.join(destination.parent.path, tempName));
   try {
     await destination.parent.create(recursive: true);
     if (await temp.exists()) await temp.delete();

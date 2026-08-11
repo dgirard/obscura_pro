@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:drift/drift.dart' show Value;
+import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -23,7 +24,21 @@ import '../catalog/photo_entity.dart';
 /// making decisions, not deletions, and the card should be able to be pulled at
 /// any point during that without consequence.
 class TrashService {
-  TrashService({required AppDatabase db, required this.macTrashRoot}) : _db = db;
+  TrashService({
+    required AppDatabase db,
+    required this.macTrashRoot,
+    this.onStep,
+  }) : _db = db;
+
+  /// Called at every boundary between a durable write and a card operation.
+  ///
+  /// Exists so the fault-injection suite can stop a run exactly where a crash
+  /// would, at each of the points the KTD-14 ordering is designed around.
+  /// Production leaves it null and pays nothing for it.
+  @visibleForTesting
+  final void Function(String step)? onStep;
+
+  void _step(String name) => onStep?.call(name);
 
   final AppDatabase _db;
 
@@ -141,8 +156,11 @@ class TrashService {
           orElse: () => photo.files.first,
         );
 
+        _step('empty.beforeIntent');
         await _trash.recordIntent(item.id, TrashState.deleting);
+        _step('empty.beforeUnlink');
         final outcome = await verifiedUnlink(File(file.path));
+        _step('empty.beforeOutcome');
 
         switch (outcome) {
           case Unlinked(bytesFreed: final freed):
@@ -232,12 +250,16 @@ class TrashService {
         p.basename(file.path),
       ));
 
+      _step('move.beforeIntent');
       await _trash.recordIntent(item.id, TrashState.movingToMacTrash);
+      _step('move.beforeCopy');
       final copy = await copyVerified(source: File(file.path), destination: destination);
+      _step('move.beforeUnlink');
 
       switch (copy) {
         case CopyVerified(:final path, :final hash):
           final unlink = await verifiedUnlink(File(file.path));
+          _step('move.beforeOutcome');
           if (unlink is Unlinked || unlink is AlreadyAbsent) {
             await _trash.commitOutcome(
               item.id,
@@ -288,6 +310,132 @@ class TrashService {
     }
 
     return MoveReport(movedFiles: moved, failed: failed);
+  }
+
+  // --- Restoring to the card -------------------------------------------------
+
+  /// Puts rescued originals back where the camera had them.
+  ///
+  /// The only path in this app that writes a photograph to a card, and it is
+  /// deliberately narrow. Three things it will not do:
+  ///
+  /// * **Rename.** R19 forbids it outright, so when the DCF name is taken by a
+  ///   different photograph the restore is not merely awkward, it is
+  ///   impossible. The entity is left in the Mac trash and the conflict is
+  ///   reported, for the user to export somewhere of their choosing.
+  /// * **Create a camera folder.** If `100LEICA/` is gone the card has been
+  ///   reformatted or is a different card; making the directory would be this
+  ///   app inventing DCF structure, which is exactly what R19 exists to stop.
+  /// * **Remove the Mac copy before the card write is verified.** The rescued
+  ///   bytes are the only copy there is until the new one has been read back
+  ///   and hashed.
+  Future<RestoreReport> restoreToCard({required String cardRoot}) async {
+    final restored = <String>[];
+    final conflicts = <TrashConflict>[];
+
+    for (final item in await _trash.itemsInState(TrashState.movedToMacTrash)) {
+      final photoRow = await _catalog.photoById(item.photoId);
+      final macPath = item.macTrashPath;
+      if (photoRow == null || macPath == null) continue;
+
+      final macCopy = File(macPath);
+      final target = File(p.join(cardRoot, item.cardRelativePath));
+
+      if (!await macCopy.exists()) {
+        conflicts.add(TrashConflict(
+          dcfPath: photoRow.radicalDcf,
+          path: macPath,
+          reason: TrashConflictReason.copyDidNotVerify,
+          detail: 'the rescued copy is no longer on the Mac',
+        ));
+        continue;
+      }
+
+      if (!await target.parent.exists()) {
+        conflicts.add(TrashConflict(
+          dcfPath: photoRow.radicalDcf,
+          path: target.path,
+          reason: TrashConflictReason.cameraFolderGone,
+        ));
+        continue;
+      }
+
+      if (await target.exists()) {
+        final occupant = await stableKeyOfFile(
+          target.path,
+          dcfRadical: photoRow.radicalDcf,
+        );
+        if (occupant != null && occupant.value == photoRow.cleStable) {
+          // Already back — an interrupted earlier restore that got as far as
+          // the rename. Finish the bookkeeping and remove the Mac copy.
+          await _finishRestore(item.id, macCopy);
+          restored.add(photoRow.radicalDcf);
+        } else {
+          conflicts.add(TrashConflict(
+            dcfPath: photoRow.radicalDcf,
+            path: target.path,
+            reason: TrashConflictReason.nameTakenByAnotherPhotograph,
+          ));
+        }
+        continue;
+      }
+
+      _step('restore.beforeIntent');
+      await _trash.recordIntent(item.id, TrashState.restoringToCard);
+      _step('restore.beforeWrite');
+      final copy = await copyVerified(
+        source: macCopy,
+        destination: target,
+        tempName: cardTempNameFor(p.basename(target.path)),
+      );
+      _step('restore.beforeOutcome');
+
+      switch (copy) {
+        case CopyVerified(:final hash):
+          // Belt and braces: the copy verified against the source it was made
+          // from, and the source verifies against the hash recorded when the
+          // original left the card. Both, or the Mac copy stays.
+          if (item.sourceHash != null && item.sourceHash != hash) {
+            conflicts.add(TrashConflict(
+              dcfPath: photoRow.radicalDcf,
+              path: target.path,
+              reason: TrashConflictReason.copyDidNotVerify,
+              detail: 'the rescued copy no longer hashes to what left the card',
+            ));
+            await verifiedUnlink(target);
+            await _trash.commitOutcome(item.id, TrashState.movedToMacTrash);
+            continue;
+          }
+          await _finishRestore(item.id, macCopy);
+          restored.add(photoRow.radicalDcf);
+        case CopyCorrupt():
+          await _trash.commitOutcome(item.id, TrashState.movedToMacTrash);
+          conflicts.add(TrashConflict(
+            dcfPath: photoRow.radicalDcf,
+            path: target.path,
+            reason: TrashConflictReason.copyDidNotVerify,
+          ));
+        case CopySourceMissing():
+        case CopyFailed():
+          await _trash.commitOutcome(item.id, TrashState.movedToMacTrash);
+          conflicts.add(TrashConflict(
+            dcfPath: photoRow.radicalDcf,
+            path: target.path,
+            reason: TrashConflictReason.ioError,
+          ));
+      }
+    }
+
+    return RestoreReport(restored: restored, conflicts: conflicts);
+  }
+
+  /// Records the card copy as authoritative and lets the Mac copy go.
+  ///
+  /// In that order, and never the reverse: the row is written first because a
+  /// crash between the two leaves a duplicate, while the reverse leaves nothing.
+  Future<void> _finishRestore(int itemId, File macCopy) async {
+    await _trash.commitOutcome(itemId, TrashState.onCard);
+    await verifiedUnlink(macCopy);
   }
 
   // --- Reconciliation --------------------------------------------------------
@@ -401,6 +549,14 @@ enum TrashConflictReason {
   /// The Mac copy did not hash to the source, so the original was left alone.
   copyDidNotVerify,
 
+  /// The DCF name is taken by a different photograph. Restoring would mean
+  /// renaming, which R19 forbids, so it is not awkward — it is impossible.
+  nameTakenByAnotherPhotograph,
+
+  /// The camera folder is gone. Creating it would be this app inventing DCF
+  /// structure on a card, which is what R19 exists to prevent.
+  cameraFolderGone,
+
   ioError,
 }
 
@@ -449,6 +605,18 @@ class MoveReport {
   final List<TrashConflict> failed;
 
   bool get succeeded => failed.isEmpty && movedFiles.isNotEmpty;
+}
+
+class RestoreReport {
+  const RestoreReport({required this.restored, required this.conflicts});
+
+  final List<String> restored;
+
+  /// Entities that could not go back. Each keeps its Mac copy: the only answer
+  /// left is for the user to export it somewhere of their choosing.
+  final List<TrashConflict> conflicts;
+
+  bool get isClean => conflicts.isEmpty;
 }
 
 class ReconcileReport {

@@ -8,6 +8,8 @@ import '../../app/theme.dart';
 import '../catalog/dcf_scanner.dart';
 import '../catalog/photo_entity.dart';
 import '../volume_select/card_selection.dart';
+import '../../app/app_shell.dart';
+import '../trash/trash_screen.dart';
 import '../viewer/viewer_screen.dart';
 import 'photo_cell.dart';
 import 'thumbnail_provider.dart';
@@ -65,6 +67,10 @@ class MarkedForDeletionNotifier extends Notifier<Set<String>> {
     if (!next.remove(stableKey)) next.add(stableKey);
     state = next;
   }
+
+  /// Takes every mark back off. What "Restore All" does when nothing has been
+  /// deleted yet, which is the ordinary case: marking touched no file.
+  void clear() => state = const {};
 }
 
 final markedForDeletionProvider =
@@ -315,6 +321,9 @@ class LibraryScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (ref.watch(librarySectionProvider) == LibrarySection.trash) {
+      return const TrashScreen();
+    }
     return ref.watch(cardCatalogProvider).when(
           loading: () => const Center(
             key: Key('scanning'),
