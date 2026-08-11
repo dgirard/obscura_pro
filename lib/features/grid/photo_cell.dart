@@ -37,7 +37,7 @@ final gridThumbnailProvider = FutureProvider.autoDispose
 /// cell that crops is showing the user a composition they did not shoot. The
 /// placeholder colour fills the tile behind the image, so a row still reads as
 /// a row of blocks rather than of floating rectangles.
-class PhotoCell extends ConsumerWidget {
+class PhotoCell extends ConsumerStatefulWidget {
   const PhotoCell({
     super.key,
     required this.photo,
@@ -45,6 +45,7 @@ class PhotoCell extends ConsumerWidget {
     required this.selected,
     required this.marked,
     this.placeholderColor,
+    this.onToggleMark,
   });
 
   final PhotoEntity photo;
@@ -63,22 +64,44 @@ class PhotoCell extends ConsumerWidget {
   /// truthful to paint and a neutral surface is shown instead.
   final int? placeholderColor;
 
+  /// Marks or unmarks the photograph. Given a visible control because a
+  /// keyboard shortcut with nothing on screen to announce it is not a feature
+  /// the user has — it is one they have to be told about.
+  final VoidCallback? onToggleMark;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PhotoCell> createState() => _PhotoCellState();
+}
+
+class _PhotoCellState extends ConsumerState<PhotoCell> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final photo = widget.photo;
+    final selected = widget.selected;
+    final marked = widget.marked;
+    final placeholderColor = widget.placeholderColor;
+
     final thumbnail = photo.isUnreadable
         ? const AsyncValue<GridThumbnail>.loading()
         : ref.watch(
-            gridThumbnailProvider((photo: photo, shortSide: targetShortSide)),
+            gridThumbnailProvider(
+              (photo: photo, shortSide: widget.targetShortSide),
+            ),
           );
 
-    final fill = placeholderColor != null
-        ? Color(placeholderColor!)
-        : ObscuraColors.surfaceContainer;
+    final fill = placeholderColor == null
+        ? ObscuraColors.surfaceContainer
+        : Color(placeholderColor);
 
-    return Semantics(
-      label: '${photo.radical}, ${photo.formatBadge}',
-      selected: selected,
-      child: DecoratedBox(
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: Semantics(
+        label: '${photo.radical}, ${photo.formatBadge}',
+        selected: selected,
+        child: DecoratedBox(
         decoration: BoxDecoration(
           color: fill,
           borderRadius: BorderRadius.circular(ObscuraRadii.base),
@@ -100,15 +123,24 @@ class PhotoCell extends ConsumerWidget {
                 right: ObscuraSpacing.controlGap / 2,
                 child: _FormatBadge(photo: photo),
               ),
-              if (marked)
+              // Shown when marked, and offered on hover when not: the control
+              // and the state are the same thing in the same place, so seeing
+              // one teaches the other.
+              if (marked || _hovered)
                 Positioned(
                   top: ObscuraSpacing.controlGap / 2,
                   left: ObscuraSpacing.controlGap / 2,
-                  child: _TrashBadge(key: Key('marked-${photo.dcfPath}')),
+                  child: _TrashButton(
+                    key: marked ? Key('marked-${photo.dcfPath}') : null,
+                    buttonKey: Key('mark-${photo.dcfPath}'),
+                    marked: marked,
+                    onPressed: widget.onToggleMark,
+                  ),
                 ),
             ],
           ),
         ),
+      ),
       ),
     );
   }
@@ -219,21 +251,43 @@ class _MarkedWash extends StatelessWidget {
       );
 }
 
-class _TrashBadge extends StatelessWidget {
-  const _TrashBadge({super.key});
+/// The mark, and the way to set it.
+class _TrashButton extends StatelessWidget {
+  const _TrashButton({
+    super.key,
+    required this.buttonKey,
+    required this.marked,
+    required this.onPressed,
+  });
+
+  final Key buttonKey;
+  final bool marked;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: ObscuraColors.statusDelete,
-        borderRadius: BorderRadius.circular(ObscuraRadii.sm),
-      ),
-      child: const Icon(
-        Icons.delete_outline,
-        size: 13,
-        color: ObscuraColors.textPrimary,
+    return Tooltip(
+      message: marked ? 'Ne plus supprimer (⌫)' : 'Marquer à supprimer (⌫)',
+      child: GestureDetector(
+        key: buttonKey,
+        onTap: onPressed,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              color: marked
+                  ? ObscuraColors.statusDelete
+                  : ObscuraColors.canvas.withValues(alpha: 0.82),
+              borderRadius: BorderRadius.circular(ObscuraRadii.sm),
+            ),
+            child: Icon(
+              marked ? Icons.delete : Icons.delete_outline,
+              size: 13,
+              color: ObscuraColors.textPrimary,
+            ),
+          ),
+        ),
       ),
     );
   }

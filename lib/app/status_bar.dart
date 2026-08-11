@@ -19,6 +19,7 @@ class StatusBar extends StatelessWidget {
     this.markedBytes = 0,
     this.cardFreeBytes,
     this.cardName,
+    this.hints,
   });
 
   final int photoCount;
@@ -36,6 +37,9 @@ class StatusBar extends StatelessWidget {
   /// mounts and is distinct from a card with no room left.
   final int? cardFreeBytes;
   final String? cardName;
+
+  /// The keyboard bindings that apply where the user is.
+  final String? hints;
 
   @override
   Widget build(BuildContext context) {
@@ -68,6 +72,14 @@ class StatusBar extends StatelessWidget {
               child: Text('Carte : ${formatBytes(cardFreeBytes!)} libres'),
             ),
           const Spacer(),
+          // The keyboard map, stated rather than assumed. Everything here is
+          // also reachable by pointer, but a culling session is a keyboard
+          // activity and a photographer cannot use a binding they were never
+          // told about.
+          _Field(
+            key: const Key('status-keys'),
+            child: Text(hints ?? ''),
+          ),
           if (cardName != null)
             _Field(
               key: const Key('status-card-name'),
@@ -125,6 +137,7 @@ class LibraryStatusBar extends ConsumerWidget {
       photoCount: photos.length,
       markedCount: marked.length,
       markedBytes: markedBytes,
+      hints: '↑↓←→ naviguer   ⏎ ouvrir   ⌫ marquer à supprimer',
       cardFreeBytes: volume?.freeBytes,
       // The volume list can lag a freshly opened card; the path's last segment
       // is the same name, and a status bar that goes briefly blank reads as a

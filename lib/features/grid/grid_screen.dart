@@ -321,6 +321,13 @@ class _LibraryGridState extends ConsumerState<LibraryGrid> {
                       selected: i == cursor,
                       marked: marked.contains(photo.key.value),
                       placeholderColor: placeholders[photo.key.value],
+                      onToggleMark: () {
+                        ref.read(gridCursorProvider.notifier).moveTo(i);
+                        ref
+                            .read(markedForDeletionProvider.notifier)
+                            .toggle(photo.key.value);
+                        _focus.requestFocus();
+                      },
                     ),
                   );
                 },
