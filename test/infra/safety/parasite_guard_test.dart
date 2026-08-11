@@ -174,10 +174,14 @@ void main() {
   });
 
   group('classifying what went wrong', () {
+    // Paths under a temp directory rather than under /Volumes on purpose: the
+    // volume check is a real filesystem question, and a test that hardcoded a
+    // mount point would pass or fail depending on what happened to be plugged
+    // into the machine.
     test('a read-only card is a loquet, not a broken card', () {
       final failure = classifyCardFailure(
-        const FileSystemException('write failed', '/Volumes/Untitled/x',
-            OSError('Read-only file system', 30)),
+        FileSystemException('write failed', p.join(card.path, 'x'),
+            const OSError('Read-only file system', 30)),
       );
 
       expect(failure.kind, CardFailureKind.readOnly);
@@ -189,13 +193,22 @@ void main() {
     });
 
     test('a vanished volume halts everything', () {
-      final failure = classifyCardFailure(
-        const FileSystemException('no such device', '/Volumes/GoneAway/DCIM/x',
-            OSError('No such device', 19)),
+      // Both signals, independently: the errno a pulled card produces, and a
+      // mount point that is no longer there.
+      expect(
+        classifyCardFailure(
+          const FileSystemException('no such device', '/Volumes/GoneAway/DCIM/x',
+              OSError('No such device', 19)),
+        ).kind,
+        CardFailureKind.volumeGone,
+      );
+      final byMissingMount = classifyCardFailure(
+        const FileSystemException('not found', '/Volumes/GoneAway/DCIM/x',
+            OSError('No such file or directory', 2)),
       );
 
-      expect(failure.kind, CardFailureKind.volumeGone);
-      expect(failure.halts, isTrue);
+      expect(byMissingMount.kind, CardFailureKind.volumeGone);
+      expect(byMissingMount.halts, isTrue);
     });
 
     test('a missing file on a card that is still there is not a vanished card',
@@ -213,8 +226,8 @@ void main() {
 
     test('a medium error says to rescue what is left', () {
       final failure = classifyCardFailure(
-        const FileSystemException('read failed', '/Volumes/Untitled/x',
-            OSError('Input/output error', 5)),
+        FileSystemException('read failed', p.join(card.path, 'x'),
+            const OSError('Input/output error', 5)),
       );
 
       expect(failure.kind, CardFailureKind.mediumError);

@@ -12,6 +12,7 @@ import '../catalog/photo_entity.dart';
 import '../grid/grid_screen.dart';
 import '../grid/photo_cell.dart';
 import '../grid/thumbnail_provider.dart';
+import '../crop/crop_screen.dart';
 import 'exif_overlay.dart';
 import 'obscura.dart';
 
@@ -199,6 +200,11 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
     final showExif = ref.watch(exifOverlayVisibleProvider);
     final marked = ref.watch(markedForDeletionProvider).contains(photo.key.value);
 
+    // Crop mode replaces the viewer rather than floating over it: choosing a
+    // frame is a different activity from reviewing one, and the chrome of the
+    // second would only get in the way of the first.
+    if (ref.watch(cropModeProvider)) return CropScreen(photo: photo);
+
     return Shortcuts(
       shortcuts: shortcutMapFor(ShortcutScope.viewer),
       child: Actions(
@@ -221,6 +227,9 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
           ToggleMarkForDeletionIntent:
               CallbackAction<ToggleMarkForDeletionIntent>(
             onInvoke: (_) => _toggleMark(),
+          ),
+          EnterCropModeIntent: CallbackAction<EnterCropModeIntent>(
+            onInvoke: (_) => ref.read(cropModeProvider.notifier).enter(),
           ),
         },
         child: Focus(
@@ -495,6 +504,12 @@ class _Chrome extends ConsumerWidget {
               icon: marked ? Icons.delete : Icons.delete_outline,
               active: marked,
               onPressed: onToggleMark,
+            ),
+            _ChromeButton(
+              tooltip: 'Recadrer (C)',
+              icon: Icons.crop,
+              active: false,
+              onPressed: () => ref.read(cropModeProvider.notifier).enter(),
             ),
             _ChromeButton(
               tooltip: 'Vision obscura (O)',

@@ -1,0 +1,232 @@
+import 'dart:io';
+import 'dart:ui';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
+import 'package:obscura_pro/features/catalog/dcf_scanner.dart';
+import 'package:obscura_pro/features/catalog/photo_entity.dart';
+import 'package:obscura_pro/features/crop/export_service.dart';
+import 'package:obscura_pro/features/crop/ratio.dart';
+import 'package:obscura_pro/infra/preview/preview_extractor.dart';
+import 'package:obscura_pro/infra/safety/atomic_ops.dart';
+import 'package:path/path.dart' as p;
+
+import '../../fixtures/fake_card.dart';
+
+void main() {
+  late FakeCard card;
+  late Directory exports;
+  const service = ExportService();
+
+  setUp(() async {
+    card = await FakeCard.create();
+    exports = await Directory.systemTemp.createTemp('obscura_exports');
+  });
+
+  tearDown(() async {
+    await card.dispose();
+    if (await exports.exists()) await exports.delete(recursive: true);
+  });
+
+  /// The fixture's full-size preview is 640 x 427.
+  Future<PhotoEntity> photo({int? orientation}) async {
+    await card.addPhoto('L1000001',
+        decodable: true, exposure: true, orientation: orientation);
+    return (await const DcfScanner().scan(card.path)).photos.single;
+  }
+
+  CropRect cropOf(CropRatio ratio, {double frameAspect = 640 / 427}) =>
+      CropRect.largestIn(frameAspect: frameAspect, ratio: ratio);
+
+  group('what the export writes', () {
+    test('produces a decodable JPEG of the cropped dimensions', () async {
+      final subject = await photo();
+
+      final outcome = await service.export(
+        photo: subject,
+        crop: cropOf(CropRatio.square),
+        folder: exports,
+      );
+
+      expect(outcome, isA<ExportWritten>());
+      final written = outcome as ExportWritten;
+      final decoded = img.decodeJpg(File(written.path).readAsBytesSync())!;
+      expect(decoded.width, written.pixelWidth);
+      expect(decoded.height, written.pixelHeight);
+      // A square crop of a 640 x 427 frame is 427 on both sides.
+      expect(decoded.width, 427);
+      expect(decoded.height, 427);
+    });
+
+    test('exports at the source resolution, not the screen\'s', () async {
+      final subject = await photo();
+
+      final outcome = await service.export(
+        photo: subject,
+        crop: const CropRect(
+          rect: Rect.fromLTWH(0.25, 0.25, 0.5, 0.5),
+          ratio: CropRatio.square,
+          orientation: CropOrientation.landscape,
+        ),
+        folder: exports,
+      ) as ExportWritten;
+
+      // The resolution-loss guard. Half of a 640-wide preview is 320; half of
+      // whatever bitmap the crop widget was fed would be a fraction of that,
+      // and the two paths look identical in code.
+      expect(outcome.pixelWidth, 320);
+      expect(outcome.pixelHeight, closeTo(213, 2));
+    });
+
+    test('carries the date, camera and exposure over', () async {
+      final subject = await photo();
+
+      final outcome = await service.export(
+        photo: subject,
+        crop: cropOf(CropRatio.threeTwo),
+        folder: exports,
+      ) as ExportWritten;
+
+      final decoded = img.decodeJpg(File(outcome.path).readAsBytesSync())!;
+      expect(
+        decoded.exif.exifIfd['DateTimeOriginal'].toString(),
+        '2026:03:14 09:26:53',
+      );
+      expect(decoded.exif.imageIfd['Model'].toString(), 'LEICA Q3');
+      expect(decoded.exif.exifIfd[0x8827]?.toInt(), 400);
+    });
+
+    test('marks the export upright whatever the source said', () async {
+      final subject = await photo(orientation: ExifOrientation.rotate90);
+
+      final outcome = await service.export(
+        photo: subject,
+        crop: cropOf(CropRatio.square, frameAspect: 427 / 640),
+        folder: exports,
+      ) as ExportWritten;
+
+      final decoded = img.decodeJpg(File(outcome.path).readAsBytesSync())!;
+      // The property that matters: nothing in the file tells a viewer to turn
+      // this picture again. Either the tag is absent or it says upright —
+      // `image`'s own decoder consumes an identity orientation, so both are the
+      // same statement.
+      final orientation = decoded.exif.imageIfd.orientation;
+      expect(orientation == null || orientation == ExifOrientation.normal, isTrue);
+      // And the pixels are already the upright ones.
+      expect(outcome.pixelHeight, greaterThanOrEqualTo(outcome.pixelWidth - 1));
+    });
+
+    test('crops a portrait frame along the axis the photographer sees',
+        () async {
+      final subject = await photo(orientation: ExifOrientation.rotate90);
+
+      // Upright, the frame is 427 x 640. An XPan band across it is as wide as
+      // the frame and a slice tall.
+      final outcome = await service.export(
+        photo: subject,
+        crop: cropOf(CropRatio.xpan, frameAspect: 427 / 640),
+        folder: exports,
+      ) as ExportWritten;
+
+      expect(outcome.pixelWidth, 427);
+      expect(outcome.pixelHeight, closeTo(427 * 24 / 65, 2));
+    });
+
+    test('leaves nothing half-written in the export folder', () async {
+      final subject = await photo();
+
+      await service.export(
+        photo: subject,
+        crop: cropOf(CropRatio.threeTwo),
+        folder: exports,
+      );
+
+      expect(
+        exports.listSync().where((e) => e.path.endsWith('.part')),
+        isEmpty,
+      );
+    });
+  });
+
+  group('the source file', () {
+    test('is byte-for-byte unchanged by an export', () async {
+      final subject = await photo();
+      final dng = File(subject.files.firstWhere((f) => f.kind == PhotoFileKind.raw).path);
+      final before = await hashOf(dng);
+
+      await service.export(
+        photo: subject,
+        crop: cropOf(CropRatio.fiveFour),
+        folder: exports,
+      );
+
+      // Cropping is a decision recorded on the Mac and a new file written on
+      // the Mac. The camera's file is opened read-only and closed.
+      expect(await hashOf(dng), before);
+    });
+
+    test('an unreadable photograph fails without writing anything', () async {
+      await card.addCorruptPhoto('L1000999');
+      final subject = (await const DcfScanner().scan(card.path)).photos.single;
+
+      final outcome = await service.export(
+        photo: subject,
+        crop: cropOf(CropRatio.threeTwo),
+        folder: exports,
+      );
+
+      expect(outcome, isA<ExportFailed>());
+      expect(exports.listSync(), isEmpty);
+    });
+  });
+
+  group('naming', () {
+    test('numbers the first export _01 and the second _02', () async {
+      final subject = await photo();
+
+      final first = await service.export(
+        photo: subject, crop: cropOf(CropRatio.threeTwo), folder: exports,
+      ) as ExportWritten;
+      final second = await service.export(
+        photo: subject, crop: cropOf(CropRatio.threeTwo), folder: exports,
+      ) as ExportWritten;
+
+      expect(p.basename(first.path), 'L1000001_3x2_01.jpg');
+      expect(p.basename(second.path), 'L1000001_3x2_02.jpg');
+      // Two files, not one overwritten: an export is a deliverable, and
+      // replacing one silently is how work disappears.
+      expect(File(first.path).existsSync(), isTrue);
+    });
+
+    test('numbers each ratio separately', () async {
+      final subject = await photo();
+
+      await service.export(
+        photo: subject, crop: cropOf(CropRatio.threeTwo), folder: exports,
+      );
+      final square = await service.export(
+        photo: subject, crop: cropOf(CropRatio.square), folder: exports,
+      ) as ExportWritten;
+
+      // Trying the same frame as a square is a different picture, not a second
+      // attempt at the same one.
+      expect(p.basename(square.path), 'L1000001_1x1_01.jpg');
+    });
+
+    test('uses the camera\'s own name for the photograph', () async {
+      final subject = await photo();
+
+      final name = await ExportService.nextFileName(
+        folder: exports,
+        photo: subject,
+        ratio: CropRatio.xpan,
+      );
+
+      // The radical is how a photographer finds the original again, so it is
+      // what the export is called — never a generated id.
+      expect(name, startsWith('L1000001_'));
+      expect(name, contains('65x24'));
+      expect(name, isNot(contains(':')));
+    });
+  });
+}

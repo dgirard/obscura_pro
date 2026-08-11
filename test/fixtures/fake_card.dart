@@ -41,6 +41,9 @@ class FakeCard {
     /// EXIF `Orientation` for the DNG. 6 is the portrait case that dominates a
     /// real card: roughly half the frames on the measured Q3 session.
     int? orientation,
+
+    /// Writes the exposure tags the viewer overlay and the export read.
+    bool exposure = false,
   }) async {
     final dir = Directory('${root.path}/DCIM/$folder');
     await dir.create(recursive: true);
@@ -52,6 +55,7 @@ class FakeCard {
         decodable: decodable,
         fullPreviewTruncated: fullPreviewTruncated,
         orientation: orientation,
+        exposure: exposure,
       );
       await File('${dir.path}/$radical.DNG').writeAsBytes(dng.bytes);
     }
