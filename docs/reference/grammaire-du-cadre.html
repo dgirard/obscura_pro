@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Grammaire du cadre — Encyclopédie des patterns de composition photographique</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Archivo:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#D9D8D2;          /* carte de gris photographe */
+  --card:#F4F3EF;
+  --ink:#1B1B18;
+  --line:#A8A69E;
+  --grid:#8E8C84;
+  --red:#D2382C;          /* point AF / safelight */
+  --blue:#2C5A8C;         /* sujet */
+  --shadow:0 1px 0 rgba(27,27,24,.18), 0 8px 24px rgba(27,27,24,.07);
+  --disp:'Space Grotesk',sans-serif;
+  --body:'Archivo',sans-serif;
+  --mono:'Space Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+/* ---------- header ---------- */
+header{max-width:1080px;margin:0 auto;padding:56px 20px 8px}
+.kicker{font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--red)}
+h1{font-family:var(--disp);font-weight:700;font-size:clamp(34px,6vw,64px);line-height:1.02;letter-spacing:-.02em;margin:14px 0 18px}
+.lede{max-width:640px;font-size:17px;color:#3A3A35}
+/* ---------- viseur (hero) ---------- */
+.viseur{max-width:1080px;margin:36px auto 0;padding:0 20px}
+.viseur-box{background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow);padding:18px}
+.viseur-box svg{display:block;width:100%;height:auto}
+.toggles{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.tg{font-family:var(--mono);font-size:12px;letter-spacing:.06em;padding:8px 14px;border:1px solid var(--ink);background:transparent;cursor:pointer;transition:background .15s,color .15s}
+.tg[aria-pressed="true"]{background:var(--ink);color:var(--card)}
+.tg:focus-visible{outline:2px solid var(--red);outline-offset:2px}
+.viseur-note{font-family:var(--mono);font-size:11px;color:#6B6962;margin-top:10px}
+/* ---------- nav ---------- */
+nav.cats{position:sticky;top:0;z-index:10;background:var(--bg);border-bottom:1px solid var(--line);margin-top:44px}
+nav.cats .inner{max-width:1080px;margin:0 auto;padding:0 20px;display:flex;gap:2px;overflow-x:auto}
+nav.cats a{font-family:var(--mono);font-size:11.5px;letter-spacing:.05em;white-space:nowrap;padding:12px 12px;text-decoration:none;border-bottom:3px solid transparent}
+nav.cats a:hover{border-bottom-color:var(--red)}
+/* ---------- sections & fiches ---------- */
+main{max-width:1080px;margin:0 auto;padding:10px 20px 80px}
+section.cat{padding-top:34px}
+.cat-head{display:flex;align-items:baseline;gap:14px;border-bottom:2px solid var(--ink);padding-bottom:10px;margin-bottom:26px}
+.cat-head .rom{font-family:var(--mono);font-size:13px;color:var(--red)}
+.cat-head h2{font-family:var(--disp);font-size:clamp(22px,3.4vw,32px);font-weight:700;letter-spacing:-.01em}
+.fiche{background:var(--card);border:1px solid var(--line);box-shadow:var(--shadow);margin-bottom:26px;display:grid;grid-template-columns:minmax(280px,420px) 1fr}
+.fiche .schema{padding:16px;border-right:1px solid var(--line);display:flex;align-items:center}
+.fiche .schema svg{width:100%;height:auto;display:block}
+.fiche .texte{padding:20px 24px 22px}
+.fiche h3{font-family:var(--disp);font-size:21px;font-weight:700;letter-spacing:-.01em}
+.en{font-family:var(--mono);font-size:11px;color:#6B6962;letter-spacing:.06em;text-transform:uppercase;margin:2px 0 12px}
+.num{font-family:var(--mono);font-size:11px;color:var(--red);letter-spacing:.1em}
+.champ{margin-top:10px;font-size:15px}
+.champ b{font-family:var(--mono);font-weight:700;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#54524B;display:block;margin-bottom:2px}
+.note{margin-top:12px;padding:10px 12px;background:#EAE0D2;border-left:3px solid var(--red);font-size:13.5px;color:#4A3F33}
+@media(max-width:760px){
+  .fiche{grid-template-columns:1fr}
+  .fiche .schema{border-right:none;border-bottom:1px solid var(--line)}
+}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+footer{border-top:1px solid var(--line);max-width:1080px;margin:0 auto;padding:26px 20px 60px;font-family:var(--mono);font-size:12px;color:#6B6962}
+/* svg helpers */
+.sv-frame{fill:#FBFAF7;stroke:var(--ink);stroke-width:2}
+.sv-grid{stroke:var(--grid);stroke-width:1.2}
+.sv-grid-d{stroke:var(--grid);stroke-width:1.2;stroke-dasharray:4 4}
+.sv-red{fill:var(--red)}
+.sv-redl{stroke:var(--red);stroke-width:2;fill:none}
+.sv-blue{fill:var(--blue)}
+.sv-bluel{stroke:var(--blue);stroke-width:2.4;fill:none}
+.sv-ink{stroke:var(--ink);stroke-width:1.6;fill:none}
+.sv-soft{fill:#DEDCD4}
+.sv-lab{font-family:'Space Mono',monospace;font-size:9px;fill:#54524B}
+</style>
+</head>
+<body>
+<header>
+  <div class="kicker">Encyclopédie visuelle</div>
+  <h1>Grammaire du cadre</h1>
+  <p class="lede">Trente patterns de composition photographique — hérités de la peinture, du cinéma et de la perception visuelle — chacun réduit à son schéma géométrique essentiel. Des grilles aux diagonales, de la lumière au blocking&nbsp;: ce que l'œil lit sans le savoir.</p>
+</header>
+
+<div class="viseur">
+  <div class="viseur-box">
+    <svg viewBox="0 0 600 400" role="img" aria-label="Scène de démonstration avec superpositions de grilles de composition">
+      <rect x="1" y="1" width="598" height="398" class="sv-frame"/>
+      <!-- scène : ciel, montagnes, chemin, personnage -->
+      <rect x="2" y="2" width="596" height="396" fill="#FBFAF7"/>
+      <path d="M2,258 L120,168 L214,238 L318,140 L432,240 L598,180 L598,398 L2,398 Z" fill="#DEDCD4"/>
+      <path d="M2,398 L2,330 C150,318 240,352 262,268 C280,206 236,196 262,150 L268,150 C252,198 296,206 278,270 C260,346 160,330 2,344 Z" fill="#C9C7BE"/>
+      <circle cx="399" cy="118" r="14" fill="#1B1B18"/>
+      <path d="M399,132 L385,196 L413,196 Z" fill="#1B1B18"/>
+      <line x1="2" y1="258" x2="598" y2="258" stroke="#A8A69E" stroke-width="1"/>
+      <!-- calques -->
+      <g id="ov-tiers" style="display:none">
+        <line x1="200" y1="2" x2="200" y2="398" class="sv-grid"/><line x1="400" y1="2" x2="400" y2="398" class="sv-grid"/>
+        <line x1="2" y1="133" x2="598" y2="133" class="sv-grid"/><line x1="2" y1="267" x2="598" y2="267" class="sv-grid"/>
+        <circle cx="200" cy="133" r="7" class="sv-red"/><circle cx="400" cy="133" r="7" class="sv-red"/>
+        <circle cx="200" cy="267" r="7" class="sv-red"/><circle cx="400" cy="267" r="7" class="sv-red"/>
+      </g>
+      <g id="ov-phi" style="display:none">
+        <line x1="229" y1="2" x2="229" y2="398" class="sv-grid-d"/><line x1="371" y1="2" x2="371" y2="398" class="sv-grid-d"/>
+        <line x1="2" y1="153" x2="598" y2="153" class="sv-grid-d"/><line x1="2" y1="247" x2="598" y2="247" class="sv-grid-d"/>
+        <circle cx="371" cy="153" r="7" class="sv-red"/><circle cx="229" cy="153" r="7" class="sv-red"/>
+        <circle cx="371" cy="247" r="7" class="sv-red"/><circle cx="229" cy="247" r="7" class="sv-red"/>
+      </g>
+      <g id="ov-spirale" style="display:none">
+        <path d="M 2,373 A 371,371 0 0 1 373,2 A 229,229 0 0 1 598,231 A 142,142 0 0 1 456,373 A 88,88 0 0 1 373,285 A 54,54 0 0 1 427,231" fill="none" stroke="#D2382C" stroke-width="2.4"/>
+        <circle cx="412" cy="262" r="6" class="sv-red"/>
+      </g>
+      <g id="ov-diag" style="display:none">
+        <line x1="2" y1="398" x2="598" y2="2" class="sv-redl"/>
+        <line x1="2" y1="2" x2="598" y2="398" class="sv-grid"/>
+        <text x="70" y="358" class="sv-lab">baroque ↗</text>
+        <text x="70" y="52" class="sv-lab">sinistre ↘</text>
+      </g>
+      <g id="ov-gt" style="display:none">
+        <line x1="2" y1="398" x2="598" y2="2" class="sv-grid"/>
+        <line x1="2" y1="2" x2="185" y2="277" class="sv-grid"/>
+        <line x1="598" y1="398" x2="415" y2="123" class="sv-grid"/>
+        <circle cx="185" cy="277" r="7" class="sv-red"/><circle cx="415" cy="123" r="7" class="sv-red"/>
+      </g>
+      <!-- coins viseur -->
+      <path d="M14,34 L14,14 L34,14 M566,14 L586,14 L586,34 M586,366 L586,386 L566,386 M34,386 L14,386 L14,366" fill="none" stroke="#1B1B18" stroke-width="3"/>
+    </svg>
+    <div class="toggles" role="group" aria-label="Superpositions de composition">
+      <button class="tg" data-ov="ov-tiers" aria-pressed="false">Règle des tiers</button>
+      <button class="tg" data-ov="ov-phi" aria-pressed="false">Grille phi</button>
+      <button class="tg" data-ov="ov-spirale" aria-pressed="false">Spirale d'or</button>
+      <button class="tg" data-ov="ov-diag" aria-pressed="false">Diagonales</button>
+      <button class="tg" data-ov="ov-gt" aria-pressed="false">Triangle d'or</button>
+    </div>
+    <p class="viseur-note">Une même scène, cinq lectures géométriques. Activez les calques pour comparer.</p>
+  </div>
+</div>
+
+<nav class="cats"><div class="inner">
+  <a href="#c1">I·Grilles</a><a href="#c2">II·Lignes</a><a href="#c3">III·Formes</a><a href="#c4">IV·Espace</a><a href="#c5">V·Perception</a><a href="#c6">VI·Lumière</a><a href="#c7">VII·Cinéma</a>
+</div></nav>
+
+<main>
+<section class="cat" id="c1">
+<div class="cat-head"><span class="rom">I</span><h2>Grilles &amp; rapports</h2></div>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Schéma de la règle des tiers">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<line x1="100" y1="1" x2="100" y2="199" class="sv-grid"/><line x1="200" y1="1" x2="200" y2="199" class="sv-grid"/>
+<line x1="1" y1="66.7" x2="299" y2="66.7" class="sv-grid"/><line x1="1" y1="133.3" x2="299" y2="133.3" class="sv-grid"/>
+<circle cx="100" cy="66.7" r="5" class="sv-red"/><circle cx="100" cy="133.3" r="5" class="sv-red"/><circle cx="200" cy="133.3" r="5" class="sv-red"/>
+<circle cx="200" cy="66.7" r="9" class="sv-blue"/>
+<text x="8" y="14" class="sv-lab">1/3</text><text x="108" y="14" class="sv-lab">2/3</text>
+</svg></div>
+<div class="texte"><span class="num">01</span><h3>Règle des tiers</h3><div class="en">Rule of thirds</div>
+<div class="champ"><b>Définition</b>Deux lignes verticales et deux horizontales divisent le cadre en neuf parts égales. Les éléments clés se placent sur les lignes, le sujet sur l'un des quatre «&nbsp;points de force&nbsp;».</div>
+<div class="champ"><b>Reconnaître</b>Sujet décentré près d'une intersection&nbsp;; horizon calé sur la ligne haute ou basse&nbsp;; yeux d'un portrait sur une intersection supérieure.</div>
+<div class="champ"><b>Effet</b>Dynamisme et tension supérieurs au centrage&nbsp;; sensation d'équilibre «&nbsp;naturel&nbsp;».</div>
+<div class="note">Histoire mythifiée&nbsp;: le terme apparaît en 1797 chez John Thomas Smith pour la proportion ciel/sol (1/3–2/3), pas pour la grille moderne, nommée ainsi seulement vers 1942. Ansel Adams la jugeait «&nbsp;invalide et sans objet&nbsp;».</div>
+</div></article>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Grille phi du nombre d'or">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<line x1="114.6" y1="1" x2="114.6" y2="199" class="sv-grid"/><line x1="185.4" y1="1" x2="185.4" y2="199" class="sv-grid"/>
+<line x1="1" y1="76.4" x2="299" y2="76.4" class="sv-grid"/><line x1="1" y1="123.6" x2="299" y2="123.6" class="sv-grid"/>
+<circle cx="114.6" cy="76.4" r="5" class="sv-red"/><circle cx="185.4" cy="123.6" r="5" class="sv-red"/><circle cx="114.6" cy="123.6" r="5" class="sv-red"/>
+<circle cx="185.4" cy="76.4" r="9" class="sv-blue"/>
+<text x="120" y="14" class="sv-lab">0.382</text><text x="220" y="14" class="sv-lab">0.618</text>
+</svg></div>
+<div class="texte"><span class="num">02</span><h3>Nombre d'or — grille phi</h3><div class="en">Golden ratio / phi grid</div>
+<div class="champ"><b>Définition</b>Grille fondée sur φ ≈ 1,618&nbsp;: lignes à 38,2&nbsp;% et 61,8&nbsp;% du cadre, dans un rapport 1&nbsp;:&nbsp;0,618&nbsp;:&nbsp;1 — plus resserrée vers le centre que les tiers.</div>
+<div class="champ"><b>Reconnaître</b>Sujet légèrement plus central qu'avec les tiers&nbsp;; proportions harmonieuses entre les masses.</div>
+<div class="champ"><b>Effet</b>Composition plus douce, équilibrée, moins dramatique que les tiers.</div>
+<div class="note">Les attributions classiques (Joconde, Parthénon, Botticelli) sont largement spéculatives — outil heuristique, pas loi historique.</div>
+</div></article>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 186" role="img" aria-label="Spirale de Fibonacci">
+<rect x="1" y="1" width="298" height="184" class="sv-frame"/>
+<line x1="185.4" y1="1" x2="185.4" y2="185" class="sv-grid-d"/>
+<line x1="185.4" y1="114.6" x2="299" y2="114.6" class="sv-grid-d"/>
+<line x1="229.2" y1="114.6" x2="229.2" y2="185" class="sv-grid-d"/>
+<line x1="185.4" y1="141.6" x2="229.2" y2="141.6" class="sv-grid-d"/>
+<path d="M 1,185 A 184.4,184.4 0 0 1 185.4,1 A 113.6,113.6 0 0 1 299,114.6 A 69.8,69.8 0 0 1 229.2,184.4 A 42.8,42.8 0 0 1 186.4,141.6 A 26,26 0 0 1 212.4,115.6" fill="none" stroke="#D2382C" stroke-width="2.4"/>
+<circle cx="207" cy="131" r="5" class="sv-red"/>
+<circle cx="207" cy="131" r="11" fill="none" stroke="#2C5A8C" stroke-width="2"/>
+</svg></div>
+<div class="texte"><span class="num">03</span><h3>Spirale d'or (Fibonacci)</h3><div class="en">Golden spiral</div>
+<div class="champ"><b>Définition</b>Spirale logarithmique construite par subdivisions successives d'un rectangle d'or en carrés (1,1,2,3,5,8…), reliés par des quarts de cercle convergeant vers «&nbsp;l'œil&nbsp;» de la spirale.</div>
+<div class="champ"><b>Reconnaître</b>Une courbe naturelle (rivière, escalier, vague) épouse l'arc&nbsp;; l'élément décisif se loge au point de convergence (~38&nbsp;% / 62&nbsp;% du cadre).</div>
+<div class="champ"><b>Effet</b>Flux organique qui guide l'œil en un mouvement continu vers le sujet.</div>
+<div class="champ"><b>Exemples</b>Escaliers en colimaçon, coquillages, paysages fluviaux.</div>
+</div></article>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Rabattement du rectangle">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<rect x="1" y="1" width="199" height="198" fill="#DEDCD4" opacity=".55"/>
+<line x1="200" y1="1" x2="200" y2="199" class="sv-ink"/>
+<line x1="100" y1="1" x2="100" y2="199" class="sv-grid-d"/>
+<path d="M 199,10 A 198,198 0 0 0 10,199" fill="none" stroke="#8E8C84" stroke-width="1" stroke-dasharray="3 4"/>
+<circle cx="200" cy="100" r="8" class="sv-blue"/>
+<text x="60" y="16" class="sv-lab">carré rabattu</text>
+</svg></div>
+<div class="texte"><span class="num">04</span><h3>Rabattement du rectangle</h3><div class="en">Rabatment</div>
+<div class="champ"><b>Définition</b>Tout rectangle contient deux carrés implicites, obtenus en rabattant le petit côté sur le grand. La ligne de rabattement (à une distance du bord égale à la hauteur) sert de repère de placement.</div>
+<div class="champ"><b>Reconnaître</b>Élément vertical fort posé sur la frontière du carré inscrit — dans un cadre 3:2, elle coïncide avec les tiers verticaux.</div>
+<div class="champ"><b>Effet</b>Harmonie&nbsp;: l'esprit «&nbsp;complète&nbsp;» le carré, forme perçue comme stable et satisfaisante.</div>
+<div class="champ"><b>Origine</b>Fondement de compositions de la Renaissance, peinture et architecture.</div>
+</div></article>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Armature de la dynamic symmetry">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<line x1="1" y1="1" x2="299" y2="199" class="sv-grid"/><line x1="1" y1="199" x2="299" y2="1" class="sv-grid"/>
+<line x1="299" y1="1" x2="166.7" y2="199" class="sv-grid-d"/><line x1="1" y1="199" x2="133.3" y2="1" class="sv-grid-d"/>
+<line x1="1" y1="1" x2="133.3" y2="199" class="sv-grid-d"/><line x1="299" y1="199" x2="166.7" y2="1" class="sv-grid-d"/>
+<circle cx="92.3" cy="61.5" r="4.5" class="sv-red"/><circle cx="207.7" cy="61.5" r="4.5" class="sv-red"/>
+<circle cx="92.3" cy="138.5" r="4.5" class="sv-red"/><circle cx="207.7" cy="138.5" r="4.5" class="sv-red"/>
+</svg></div>
+<div class="texte"><span class="num">05</span><h3>Symétrie dynamique — armature</h3><div class="en">Dynamic symmetry (Hambidge)</div>
+<div class="champ"><b>Définition</b>Système proportionnel fondé sur les diagonales du cadre et leurs «&nbsp;réciproques&nbsp;» (perpendiculaires abaissées des coins). Leurs intersections — les «&nbsp;yeux du rectangle&nbsp;» — accueillent les éléments clés. L'armature de Charles Bouleau généralise à 14 lignes.</div>
+<div class="champ"><b>Reconnaître</b>Alignements précis des sujets sur diagonales et réciproques&nbsp;; se lit surtout en analyse a posteriori.</div>
+<div class="champ"><b>Effet</b>Rythme interne, cohésion, dynamisme lié aux proportions mêmes du cadre.</div>
+<div class="note">Jay Hambidge (1920) fonde sa théorie sur les vases grecs&nbsp;; l'attribution grecque est réfutée (Rhys Carpenter), l'outil compositionnel demeure. Cartier-Bresson refusait toute grille a priori&nbsp;: les analyses géométriques de son œuvre sont des lectures rétrospectives.</div>
+</div></article>
+</section>
+
+<section class="cat" id="c2">
+<div class="cat-head"><span class="rom">II</span><h2>Lignes &amp; directions</h2></div>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Lignes directrices convergeant vers le sujet">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<line x1="1" y1="199" x2="200" y2="80" class="sv-redl"/>
+<line x1="120" y1="199" x2="200" y2="80" class="sv-redl"/>
+<line x1="299" y1="185" x2="200" y2="80" class="sv-redl"/>
+<line x1="1" y1="120" x2="200" y2="80" class="sv-grid-d"/>
+<circle cx="200" cy="80" r="9" class="sv-blue"/>
+</svg></div>
+<div class="texte"><span class="num">06</span><h3>Lignes directrices</h3><div class="en">Leading lines</div>
+<div class="champ"><b>Définition</b>Lignes réelles ou implicites (route, rail, clôture, ombre) qui conduisent le regard vers le sujet ou à travers l'image.</div>
+<div class="champ"><b>Reconnaître</b>Plusieurs lignes partant des bords ou des coins convergent vers un point d'intérêt, souvent posé sur une intersection des tiers.</div>
+<div class="champ"><b>Effet</b>Profondeur et direction&nbsp;: diagonales dynamiques, courbes douces, verticales fortes, horizontales calmes.</div>
+<div class="champ"><b>Origine</b>Perspective de la Renaissance, devenue réflexe du paysage photographique.</div>
+</div></article>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Perspective à un, deux et trois points de fuite">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<rect x="8" y="30" width="88" height="140" fill="none" stroke="#1B1B18" stroke-width="1.4"/>
+<line x1="8" y1="100" x2="96" y2="100" class="sv-grid"/>
+<circle cx="52" cy="100" r="4" class="sv-red"/>
+<line x1="8" y1="30" x2="52" y2="100" class="sv-grid-d"/><line x1="96" y1="30" x2="52" y2="100" class="sv-grid-d"/>
+<line x1="8" y1="170" x2="52" y2="100" class="sv-grid-d"/><line x1="96" y1="170" x2="52" y2="100" class="sv-grid-d"/>
+<text x="34" y="188" class="sv-lab">1 point</text>
+<rect x="106" y="30" width="88" height="140" fill="none" stroke="#1B1B18" stroke-width="1.4"/>
+<line x1="106" y1="105" x2="194" y2="105" class="sv-grid"/>
+<circle cx="110" cy="105" r="4" class="sv-red"/><circle cx="190" cy="105" r="4" class="sv-red"/>
+<line x1="150" y1="55" x2="150" y2="150" class="sv-ink"/>
+<line x1="150" y1="55" x2="110" y2="105" class="sv-grid-d"/><line x1="150" y1="55" x2="190" y2="105" class="sv-grid-d"/>
+<line x1="150" y1="150" x2="110" y2="105" class="sv-grid-d"/><line x1="150" y1="150" x2="190" y2="105" class="sv-grid-d"/>
+<text x="128" y="188" class="sv-lab">2 points</text>
+<rect x="204" y="30" width="88" height="140" fill="none" stroke="#1B1B18" stroke-width="1.4"/>
+<circle cx="248" cy="36" r="4" class="sv-red"/>
+<line x1="216" y1="166" x2="248" y2="36" class="sv-grid-d"/><line x1="280" y1="166" x2="248" y2="36" class="sv-grid-d"/>
+<line x1="230" y1="166" x2="248" y2="36" class="sv-grid-d"/><line x1="266" y1="166" x2="248" y2="36" class="sv-grid-d"/>
+<text x="226" y="188" class="sv-lab">3 points</text>
+</svg></div>
+<div class="texte"><span class="num">07</span><h3>Points de fuite &amp; perspective</h3><div class="en">Vanishing points — 1, 2, 3 points</div>
+<div class="champ"><b>Définition</b>Points de l'horizon où convergent les parallèles&nbsp;: un point (vue frontale), deux (vue d'angle), trois (plongée ou contre-plongée, fuite verticale).</div>
+<div class="champ"><b>Reconnaître</b>Couloir ou rails convergeant au centre (1&nbsp;pt)&nbsp;; arête d'immeuble avec deux fuites latérales (2&nbsp;pts)&nbsp;; gratte-ciel aux verticales convergentes (3&nbsp;pts).</div>
+<div class="champ"><b>Effet</b>Profondeur immersive, échelle, monumentalité.</div>
+<div class="champ"><b>Origine</b>Perspective linéaire codifiée à la Renaissance (Brunelleschi, Alberti)&nbsp;; le troisième point exploré par Vredeman de Vries puis Schübler, révélé au grand jour par la photographie du XIXᵉ.</div>
+</div></article>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Diagonales baroque et sinistre">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<line x1="1" y1="199" x2="299" y2="1" class="sv-redl"/>
+<line x1="1" y1="1" x2="299" y2="199" class="sv-grid"/>
+<path d="M 272,30 L 284,11 L 264,17" fill="none" stroke="#D2382C" stroke-width="2"/>
+<path d="M 272,170 L 284,189 L 264,183" fill="none" stroke="#8E8C84" stroke-width="1.6"/>
+<text x="14" y="176" class="sv-lab">baroque — ascension</text>
+<text x="14" y="32" class="sv-lab">sinistre — chute</text>
+</svg></div>
+<div class="texte"><span class="num">08</span><h3>Diagonales baroque &amp; sinistre</h3><div class="en">Baroque &amp; sinister diagonals</div>
+<div class="champ"><b>Définition</b>Les deux diagonales du cadre, lues de gauche à droite&nbsp;: la baroque monte (bas-gauche → haut-droit), la sinistre descend (haut-gauche → bas-droit).</div>
+<div class="champ"><b>Reconnaître</b>La ligne dominante de la scène suit l'une des deux diagonales&nbsp;; le mouvement du sujet est ascendant ou descendant.</div>
+<div class="champ"><b>Effet</b>Baroque&nbsp;: optimisme, énergie positive. Sinistre&nbsp;: tension, turbulence, instabilité.</div>
+<div class="champ"><b>Exemples</b>Compositions de Robert Mapplethorpe, analysées par Adam Marelli.</div>
+</div></article>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Méthode des diagonales de Westhoff">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<line x1="1" y1="1" x2="199" y2="199" class="sv-grid-d"/>
+<line x1="299" y1="1" x2="101" y2="199" class="sv-grid-d"/>
+<line x1="1" y1="199" x2="199" y2="1" class="sv-grid-d"/>
+<line x1="299" y1="199" x2="101" y2="1" class="sv-grid-d"/>
+<circle cx="66" cy="66" r="8" class="sv-blue"/>
+<circle cx="238" cy="138" r="5" class="sv-red"/>
+<text x="10" y="16" class="sv-lab">45°</text>
+</svg></div>
+<div class="texte"><span class="num">09</span><h3>Méthode des diagonales</h3><div class="en">Diagonal method (Westhoff)</div>
+<div class="champ"><b>Définition</b>Les détails d'intérêt se placent précisément sur les bissectrices à 45° issues des quatre coins — distinctes des diagonales du cadre quand celui-ci n'est pas carré.</div>
+<div class="champ"><b>Reconnaître</b>Un détail isolé (visage, arbre, fenêtre) posé exactement sur une ligne à 45° partant d'un coin.</div>
+<div class="champ"><b>Effet</b>Emphase naturelle du détail&nbsp;; ne s'applique qu'aux images à détails isolés, pas aux paysages d'ensemble.</div>
+<div class="champ"><b>Origine</b>Observée par le photographe néerlandais Edwin Westhoff (2007–2009) en étudiant photos, tableaux et gravures.</div>
+</div></article>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Courbe en S">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<path d="M 130,199 C 55,158 235,132 158,96 C 96,66 196,38 150,1" fill="none" stroke="#D2382C" stroke-width="3"/>
+<circle cx="150" cy="34" r="7" class="sv-blue"/>
+</svg></div>
+<div class="texte"><span class="num">10</span><h3>Courbe en S</h3><div class="en">S-curve — line of beauty</div>
+<div class="champ"><b>Définition</b>Ligne serpentine traversant l'image de bas en haut avec un balancement latéral, guidant l'œil en profondeur.</div>
+<div class="champ"><b>Reconnaître</b>Rivière, sentier, colonne vertébrale ou route sinuant en S, entrant et sortant du cadre sans passer par les coins.</div>
+<div class="champ"><b>Effet</b>Grâce, mouvement, vitalité&nbsp;; anime une scène statique.</div>
+<div class="champ"><b>Origine</b>Théorisée par William Hogarth (<i>The Analysis of Beauty</i>, 1753) comme «&nbsp;Line of Beauty&nbsp;»&nbsp;; une étude de 2022 (Hübner &amp; Ufken, <i>i-Perception</i>) confirme que la courbure explique plus de 90&nbsp;% des jugements de beauté des lignes.</div>
+</div></article>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Triangle d'or">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<line x1="1" y1="199" x2="299" y2="1" class="sv-grid"/>
+<line x1="1" y1="1" x2="92.3" y2="138.5" class="sv-grid"/>
+<line x1="299" y1="199" x2="207.7" y2="61.5" class="sv-grid"/>
+<circle cx="92.3" cy="138.5" r="5" class="sv-red"/><circle cx="207.7" cy="61.5" r="5" class="sv-red"/>
+<circle cx="207.7" cy="61.5" r="11" fill="none" stroke="#2C5A8C" stroke-width="2"/>
+</svg></div>
+<div class="texte"><span class="num">11</span><h3>Triangle d'or</h3><div class="en">Golden triangle</div>
+<div class="champ"><b>Définition</b>Une diagonale de coin à coin, puis deux perpendiculaires abaissées des deux autres coins&nbsp;: quatre triangles, deux intersections qui reçoivent les sujets.</div>
+<div class="champ"><b>Reconnaître</b>Élément diagonal fort (rue en pente, escalier) aligné sur la grande diagonale, sujet posé sur une intersection.</div>
+<div class="champ"><b>Effet</b>Énergie diagonale et mouvement, tout en restant équilibré — mieux adapté aux scènes angulaires que la grille des tiers.</div>
+<div class="champ"><b>Origine</b>Adaptation picturale ancienne, intégrée aujourd'hui aux outils de recadrage (Photoshop).</div>
+</div></article>
+</section>
+<section class="cat" id="c3">
+<div class="cat-head"><span class="rom">III</span><h2>Formes &amp; équilibre</h2></div>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Composition triangulaire">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<path d="M 150,38 L 62,168 L 238,168 Z" fill="none" stroke="#8E8C84" stroke-width="1.4" stroke-dasharray="5 4"/>
+<circle cx="150" cy="46" r="11" class="sv-blue"/>
+<circle cx="74" cy="160" r="9" class="sv-blue"/>
+<circle cx="226" cy="160" r="9" class="sv-blue"/>
+</svg></div>
+<div class="texte"><span class="num">12</span><h3>Composition triangulaire</h3><div class="en">Triangle / pyramid</div>
+<div class="champ"><b>Définition</b>Trois éléments — ou un groupe — disposés en triangle implicite, base large et sommet dominant.</div>
+<div class="champ"><b>Reconnaître</b>Groupe de personnes ou d'objets dont les têtes dessinent un triangle&nbsp;; montagne, pyramide humaine.</div>
+<div class="champ"><b>Effet</b>Sur sa base&nbsp;: stabilité, permanence, autorité tranquille. Sur sa pointe&nbsp;: tension, instabilité.</div>
+<div class="champ"><b>Origine</b>Frontons grecs, perfectionnée par les Madones de la Haute Renaissance (Léonard, <i>La Vierge aux rochers</i>&nbsp;; Raphaël).</div>
+</div></article>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Symétrie verticale">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<line x1="150" y1="1" x2="150" y2="199" class="sv-grid-d"/>
+<path d="M 60,170 L 60,90 A 40,40 0 0 1 140,90 L 140,170 Z" fill="none" stroke="#1B1B18" stroke-width="2"/>
+<path d="M 160,170 L 160,90 A 40,40 0 0 1 240,90 L 240,170 Z" fill="none" stroke="#1B1B18" stroke-width="2"/>
+<circle cx="150" cy="55" r="6" class="sv-red"/>
+<text x="128" y="18" class="sv-lab">miroir</text>
+</svg></div>
+<div class="texte"><span class="num">13</span><h3>Symétrie</h3><div class="en">Symmetry — vertical, horizontal, radial</div>
+<div class="champ"><b>Définition</b>Un axe de miroir organise le cadre&nbsp;: vertical (gauche/droite), horizontal (reflets), radial (autour d'un centre).</div>
+<div class="champ"><b>Reconnaître</b>Architecture frontale, reflet dans l'eau, rosace&nbsp;; les deux moitiés se répondent presque exactement.</div>
+<div class="champ"><b>Effet</b>Ordre, calme, permanence, solennité — jusqu'au deadpan comique chez Wes Anderson (<i>The Grand Budapest Hotel</i>).</div>
+<div class="champ"><b>Origine</b>Architecture classique et art sacré&nbsp;; réhabilitée au cinéma par la composition planimétrique.</div>
+</div></article>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Composition centrée">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<line x1="150" y1="86" x2="150" y2="114" class="sv-grid"/>
+<line x1="136" y1="100" x2="164" y2="100" class="sv-grid"/>
+<circle cx="150" cy="100" r="34" fill="none" stroke="#8E8C84" stroke-width="1.2" stroke-dasharray="4 4"/>
+<circle cx="150" cy="100" r="13" class="sv-blue"/>
+</svg></div>
+<div class="texte"><span class="num">14</span><h3>Centrage</h3><div class="en">Center composition</div>
+<div class="champ"><b>Définition</b>Le sujet occupe le centre exact du cadre, sur les deux axes.</div>
+<div class="champ"><b>Reconnaître</b>Masse visuelle concentrée au milieu&nbsp;; souvent couplée à la symétrie et à la frontalité.</div>
+<div class="champ"><b>Effet</b>Force, stabilité, confrontation directe&nbsp;; statique mais puissant pour les sujets symétriques et les portraits frontaux.</div>
+<div class="champ"><b>Exemples</b>Portraits formels, art sacré, plans de Wes Anderson.</div>
+</div></article>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Poids visuel et balance asymétrique">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<line x1="42" y1="140" x2="262" y2="140" class="sv-ink"/>
+<path d="M 150,140 L 136,170 L 164,170 Z" fill="#1B1B18"/>
+<circle cx="106" cy="116" r="24" class="sv-blue"/>
+<circle cx="252" cy="131" r="9" class="sv-red"/>
+<text x="88" y="80" class="sv-lab">masse proche</text>
+<text x="216" y="112" class="sv-lab">petit, loin</text>
+</svg></div>
+<div class="texte"><span class="num">15</span><h3>Poids visuel &amp; équilibre</h3><div class="en">Visual weight &amp; balance</div>
+<div class="champ"><b>Définition</b>Chaque élément «&nbsp;pèse&nbsp;» selon sa taille, sa couleur, son contraste et sa position. L'équilibre peut être symétrique, ou asymétrique&nbsp;: une grande masse près du centre compensée par un petit élément éloigné, comme sur une balance romaine.</div>
+<div class="champ"><b>Reconnaître</b>Masse d'un côté répondant à un vide ou à un détail excentré de l'autre&nbsp;; le rouge pèse plus que le bleu, le sombre plus que le clair.</div>
+<div class="champ"><b>Effet</b>Équilibre&nbsp;: harmonie, stabilité. Déséquilibre volontaire&nbsp;: malaise, tension, mystère.</div>
+<div class="champ"><b>Origine</b>Théorisé par Rudolf Arnheim (<i>Art and Visual Perception</i>, 1954) et son réseau structurel à neuf points chauds.</div>
+</div></article>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Règle des nombres impairs">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<path d="M 108,70 L 196,96 L 132,148 Z" fill="none" stroke="#8E8C84" stroke-width="1.2" stroke-dasharray="4 4"/>
+<circle cx="108" cy="70" r="13" class="sv-blue"/>
+<circle cx="196" cy="96" r="16" class="sv-blue"/>
+<circle cx="132" cy="148" r="11" class="sv-blue"/>
+<text x="222" y="180" class="sv-lab">3 · 5 · 7</text>
+</svg></div>
+<div class="texte"><span class="num">16</span><h3>Règle des nombres impairs</h3><div class="en">Rule of odds</div>
+<div class="champ"><b>Définition</b>Un nombre impair de sujets (3, 5, 7) est perçu comme plus vivant et mieux équilibré qu'un nombre pair — l'œil ne peut pas les apparier.</div>
+<div class="champ"><b>Reconnaître</b>Trois ou cinq objets, souvent en arrangement triangulaire, tailles et distances variées.</div>
+<div class="champ"><b>Effet</b>Dynamisme et naturel&nbsp;; le pair paraît statique, divisé en deux camps.</div>
+<div class="note">Convention de la nature morte, contestée par certains théoriciens de la symétrie dynamique — heuristique utile, pas absolue.</div>
+</div></article>
+</section>
+
+<section class="cat" id="c4">
+<div class="cat-head"><span class="rom">IV</span><h2>Espace &amp; profondeur</h2></div>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Espace négatif">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<circle cx="200" cy="133" r="10" class="sv-blue"/>
+<line x1="200" y1="143" x2="200" y2="168" class="sv-bluel"/>
+<text x="26" y="40" class="sv-lab">vide actif</text>
+</svg></div>
+<div class="texte"><span class="num">17</span><h3>Espace négatif</h3><div class="en">Negative space</div>
+<div class="champ"><b>Définition</b>De vastes zones vides (ciel, mur, eau) entourent un sujet réduit à une fraction du cadre.</div>
+<div class="champ"><b>Reconnaître</b>Surface unie dominante&nbsp;; sujet occupant 10 à 20&nbsp;% de l'image, souvent sur un point de force.</div>
+<div class="champ"><b>Effet</b>Respiration, solitude, calme&nbsp;; paradoxalement, le vide renforce l'importance du sujet.</div>
+<div class="champ"><b>Origine</b>Minimalisme, et le «&nbsp;ma&nbsp;» de l'esthétique japonaise — l'intervalle comme matière.</div>
+</div></article>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Remplir le cadre">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<circle cx="150" cy="108" r="128" fill="#DEDCD4" stroke="#1B1B18" stroke-width="2"/>
+<circle cx="106" cy="82" r="12" fill="#1B1B18"/>
+<circle cx="194" cy="82" r="12" fill="#1B1B18"/>
+<path d="M 108,150 Q 150,178 192,150" fill="none" stroke="#1B1B18" stroke-width="3"/>
+</svg></div>
+<div class="texte"><span class="num">18</span><h3>Remplir le cadre</h3><div class="en">Fill the frame</div>
+<div class="champ"><b>Définition</b>Le sujet occupe la quasi-totalité de l'image, coupé par les bords&nbsp;; l'arrière-plan disparaît.</div>
+<div class="champ"><b>Reconnaître</b>Cadrage serré, plus de 90&nbsp;% de la surface au sujet, détails et textures dominants.</div>
+<div class="champ"><b>Effet</b>Immersion, intimité, intensité&nbsp;; élimine toute distraction.</div>
+<div class="champ"><b>Origine</b>Credo de Robert Capa&nbsp;: «&nbsp;Si vos photos ne sont pas assez bonnes, c'est que vous n'êtes pas assez près.&nbsp;»</div>
+</div></article>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Profondeur par plans">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<path d="M 1,86 L 70,44 L 140,86 L 210,50 L 299,90 L 299,1 L 1,1 Z" fill="#EDEBE4"/>
+<path d="M 1,86 L 70,44 L 140,86 L 210,50 L 299,90" fill="none" stroke="#A8A69E" stroke-width="1.6"/>
+<path d="M 1,140 L 90,108 L 190,142 L 299,116 L 299,90 L 1,86 Z" fill="#D6D4CB"/>
+<path d="M 1,199 L 1,152 C 90,168 210,138 299,164 L 299,199 Z" fill="#B4B2A8"/>
+<text x="10" y="188" class="sv-lab">premier plan</text>
+<text x="10" y="130" class="sv-lab">plan moyen</text>
+<text x="10" y="24" class="sv-lab">arrière-plan</text>
+</svg></div>
+<div class="texte"><span class="num">19</span><h3>Profondeur par plans</h3><div class="en">Layering — foreground / middleground / background</div>
+<div class="champ"><b>Définition</b>Trois couches distinctes — premier plan, plan moyen, arrière-plan — construisent l'illusion de profondeur.</div>
+<div class="champ"><b>Reconnaître</b>Élément d'ancrage net au premier plan, sujet au plan moyen, contexte au fond&nbsp;; brume ou flou renforçant la séparation.</div>
+<div class="champ"><b>Effet</b>Profondeur, échelle, narration en couches successives.</div>
+<div class="champ"><b>Exemples</b>Perspective atmosphérique de la Renaissance&nbsp;; les plans de David Lean (<i>Lawrence d'Arabie</i>).</div>
+</div></article>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Isolation par profondeur de champ">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<circle cx="216" cy="58" r="20" fill="#CFCDC4" opacity=".8"/>
+<circle cx="256" cy="112" r="14" fill="#CFCDC4" opacity=".8"/>
+<circle cx="186" cy="130" r="11" fill="#CFCDC4" opacity=".7"/>
+<circle cx="246" cy="40" r="9" fill="#CFCDC4" opacity=".7"/>
+<circle cx="104" cy="104" r="30" fill="#F4F3EF" stroke="#1B1B18" stroke-width="3"/>
+<circle cx="104" cy="104" r="8" class="sv-blue"/>
+<text x="80" y="168" class="sv-lab">net</text><text x="212" y="168" class="sv-lab">bokeh</text>
+</svg></div>
+<div class="texte"><span class="num">20</span><h3>Isolation du sujet</h3><div class="en">Subject isolation — shallow depth of field</div>
+<div class="champ"><b>Définition</b>Une faible profondeur de champ (grande ouverture) rend le sujet net sur un fond fondu en taches de flou (bokeh).</div>
+<div class="champ"><b>Reconnaître</b>Transition net/flou marquée, cercles lumineux diffus à l'arrière-plan.</div>
+<div class="champ"><b>Effet</b>Focalisation immédiate, séparation du fond, sensation de relief et d'élégance.</div>
+<div class="champ"><b>Origine</b>Propriété optique propre à la photographie — un pattern que la peinture a ensuite imité.</div>
+</div></article>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Position de l'horizon">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<rect x="14" y="26" width="128" height="148" fill="none" stroke="#1B1B18" stroke-width="1.4"/>
+<line x1="14" y1="130" x2="142" y2="130" class="sv-redl"/>
+<text x="42" y="86" class="sv-lab">ciel 2/3</text>
+<rect x="158" y="26" width="128" height="148" fill="none" stroke="#1B1B18" stroke-width="1.4"/>
+<line x1="158" y1="72" x2="286" y2="72" class="sv-redl"/>
+<text x="186" y="132" class="sv-lab">sol 2/3</text>
+</svg></div>
+<div class="texte"><span class="num">21</span><h3>Position de l'horizon</h3><div class="en">Horizon placement</div>
+<div class="champ"><b>Définition</b>La ligne d'horizon se place au tiers bas (ciel dominant), au tiers haut (sol dominant) ou au centre (reflets, formalité).</div>
+<div class="champ"><b>Reconnaître</b>Jamais «&nbsp;par défaut&nbsp;» au milieu&nbsp;: la position déclare ce qui compte.</div>
+<div class="champ"><b>Effet</b>Horizon bas&nbsp;: grandeur du ciel, ouverture. Horizon haut&nbsp;: matière du terrain, intimité. Central&nbsp;: calme spéculaire.</div>
+<div class="champ"><b>Origine</b>Peinture de paysage hollandaise, marines.</div>
+</div></article>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Cadre dans le cadre">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<path d="M 1,1 L 299,1 L 299,199 L 1,199 Z M 88,199 L 88,86 A 62,62 0 0 1 212,86 L 212,199 Z" fill="#B4B2A8" fill-rule="evenodd"/>
+<path d="M 88,199 L 88,86 A 62,62 0 0 1 212,86 L 212,199" fill="none" stroke="#1B1B18" stroke-width="2"/>
+<circle cx="150" cy="132" r="10" class="sv-blue"/>
+<line x1="150" y1="142" x2="150" y2="172" class="sv-bluel"/>
+</svg></div>
+<div class="texte"><span class="num">22</span><h3>Cadre dans le cadre</h3><div class="en">Frame within a frame</div>
+<div class="champ"><b>Définition</b>Un élément de la scène — arche, porte, fenêtre, branches — encadre le sujet à l'intérieur du cadre photographique.</div>
+<div class="champ"><b>Reconnaître</b>Bordure interne, souvent sombre, entourant un sujet plus lumineux.</div>
+<div class="champ"><b>Effet</b>Profondeur, contexte, concentration du regard&nbsp;; intimité, parfois voyeurisme.</div>
+<div class="champ"><b>Origine</b>Fenêtres et arches de la peinture Renaissance et baroque.</div>
+</div></article>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Règle de l'espace">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<line x1="110" y1="1" x2="110" y2="199" class="sv-grid-d"/>
+<circle cx="76" cy="84" r="13" class="sv-blue"/>
+<path d="M 76,97 L 62,150 L 90,150 Z" class="sv-blue"/>
+<line x1="100" y1="84" x2="240" y2="84" class="sv-redl"/>
+<path d="M 240,84 L 226,76 M 240,84 L 226,92" class="sv-redl"/>
+<text x="150" y="110" class="sv-lab">espace de regard</text>
+</svg></div>
+<div class="texte"><span class="num">23</span><h3>Règle de l'espace</h3><div class="en">Lead room / nose room</div>
+<div class="champ"><b>Définition</b>Laisser du vide devant la direction du regard ou du mouvement&nbsp;: le sujet se place du côté opposé à celui vers lequel il regarde ou avance.</div>
+<div class="champ"><b>Reconnaître</b>Portrait de profil avec l'espace côté visage&nbsp;; coureur ou véhicule avec du champ devant lui.</div>
+<div class="champ"><b>Effet</b>Respiration et sensation de mouvement&nbsp;; l'espace inversé crée enfermement et malaise — parfois recherché.</div>
+<div class="champ"><b>Origine</b>Convention du cinéma, adoptée par le portrait et la photo de sport.</div>
+</div></article>
+</section>
+<section class="cat" id="c5">
+<div class="cat-head"><span class="rom">V</span><h2>Perception &amp; Gestalt</h2></div>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Quatre principes de la Gestalt">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<line x1="150" y1="1" x2="150" y2="199" class="sv-grid"/><line x1="1" y1="100" x2="299" y2="100" class="sv-grid"/>
+<circle cx="40" cy="40" r="5" fill="#1B1B18"/><circle cx="56" cy="46" r="5" fill="#1B1B18"/><circle cx="46" cy="58" r="5" fill="#1B1B18"/>
+<circle cx="104" cy="62" r="5" fill="#1B1B18"/><circle cx="118" cy="54" r="5" fill="#1B1B18"/><circle cx="110" cy="42" r="5" fill="#1B1B18"/>
+<text x="12" y="92" class="sv-lab">proximité</text>
+<circle cx="180" cy="36" r="5" fill="#1B1B18"/><circle cx="205" cy="36" r="5" fill="#1B1B18"/><circle cx="230" cy="36" r="5" fill="#1B1B18"/><circle cx="255" cy="36" r="5" fill="#1B1B18"/>
+<rect x="175" y="55" width="10" height="10" class="sv-red"/><rect x="200" y="55" width="10" height="10" class="sv-red"/><rect x="225" y="55" width="10" height="10" class="sv-red"/><rect x="250" y="55" width="10" height="10" class="sv-red"/>
+<text x="162" y="92" class="sv-lab">similarité</text>
+<path d="M 16,166 C 50,120 100,180 134,134" fill="none" stroke="#A8A69E" stroke-width="1" stroke-dasharray="2 3"/>
+<circle cx="16" cy="166" r="4" fill="#1B1B18"/><circle cx="45" cy="140" r="4" fill="#1B1B18"/><circle cx="75" cy="150" r="4" fill="#1B1B18"/><circle cx="105" cy="152" r="4" fill="#1B1B18"/><circle cx="134" cy="134" r="4" fill="#1B1B18"/>
+<text x="12" y="192" class="sv-lab">continuité</text>
+<path d="M 218,124 A 26,26 0 1 1 200,132" fill="none" stroke="#1B1B18" stroke-width="2.4"/>
+<text x="162" y="192" class="sv-lab">clôture</text>
+</svg></div>
+<div class="texte"><span class="num">24</span><h3>Principes de Gestalt</h3><div class="en">Gestalt — proximity, similarity, continuity, closure</div>
+<div class="champ"><b>Définition</b>Lois de la perception (Wertheimer, Köhler, Koffka, années 1920)&nbsp;: les objets proches forment un groupe (proximité), les semblables aussi (similarité), l'œil suit les lignes (continuité) et complète les formes interrompues (clôture).</div>
+<div class="champ"><b>Reconnaître</b>Foules lues comme masses, motifs interrompus, silhouettes suggérées plutôt que montrées.</div>
+<div class="champ"><b>Effet</b>Organisation et lisibilité&nbsp;; la photo raconte des relations entre sujets sans les expliciter.</div>
+<div class="champ"><b>Exemples</b>Photographie de rue&nbsp;: groupes, échos de formes, figures coupées que l'œil reconstruit.</div>
+</div></article>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Motif et rupture de motif">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<g fill="#8E8C84">
+<circle cx="50" cy="40" r="9"/><circle cx="100" cy="40" r="9"/><circle cx="150" cy="40" r="9"/><circle cx="250" cy="40" r="9"/>
+<circle cx="50" cy="90" r="9"/><circle cx="100" cy="90" r="9"/><circle cx="150" cy="90" r="9"/><circle cx="200" cy="90" r="9"/><circle cx="250" cy="90" r="9"/>
+<circle cx="50" cy="140" r="9"/><circle cx="100" cy="140" r="9"/><circle cx="150" cy="140" r="9"/><circle cx="200" cy="140" r="9"/><circle cx="250" cy="140" r="9"/>
+</g>
+<rect x="191" y="31" width="18" height="18" class="sv-red"/>
+</svg></div>
+<div class="texte"><span class="num">25</span><h3>Motif, rythme &amp; rupture</h3><div class="en">Pattern, rhythm &amp; break</div>
+<div class="champ"><b>Définition</b>La répétition d'éléments similaires crée un rythme hypnotique&nbsp;; un intrus — couleur, forme, orientation — le brise et devient point focal.</div>
+<div class="champ"><b>Reconnaître</b>Grille régulière (fenêtres, colonnes, parapluies) et son anomalie unique, idéalement hors centre.</div>
+<div class="champ"><b>Effet</b>Le motif apaise, la rupture électrise&nbsp;: l'œil saute immédiatement sur l'exception.</div>
+<div class="champ"><b>Origine</b>Arts décoratifs et architecture&nbsp;; principe Gestalt de similarité retourné contre lui-même.</div>
+</div></article>
+</section>
+
+<section class="cat" id="c6">
+<div class="cat-head"><span class="rom">VI</span><h2>Lumière &amp; couleur</h2></div>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Clair-obscur et éclairage Rembrandt">
+<rect x="1" y="1" width="298" height="198" fill="#232320" stroke="#1B1B18" stroke-width="2"/>
+<defs><linearGradient id="cg" x1="0" y1="0" x2="1" y2="0">
+<stop offset="0" stop-color="#F4F3EF"/><stop offset="0.55" stop-color="#8E8C84"/><stop offset="0.72" stop-color="#3A3A35"/><stop offset="1" stop-color="#2A2A26"/>
+</linearGradient></defs>
+<circle cx="150" cy="100" r="58" fill="url(#cg)"/>
+<path d="M 176,96 L 192,90 L 188,112 Z" fill="#E7E5DC"/>
+<circle cx="128" cy="88" r="6" fill="#232320"/>
+<circle cx="182" cy="86" r="5" fill="#232320" opacity=".7"/>
+<text x="12" y="188" fill="#A8A69E" style="font-family:'Space Mono',monospace;font-size:9px">source unique ← · triangle Rembrandt</text>
+</svg></div>
+<div class="texte"><span class="num">26</span><h3>Clair-obscur &amp; lumière Rembrandt</h3><div class="en">Chiaroscuro / Rembrandt lighting</div>
+<div class="champ"><b>Définition</b>Un fort contraste ombre/lumière modèle le volume et dirige l'œil. L'éclairage Rembrandt signe le portrait&nbsp;: un petit triangle lumineux sous l'œil, côté ombre.</div>
+<div class="champ"><b>Reconnaître</b>Sujet émergeant du noir, source unique et directionnelle, triangle de joue caractéristique.</div>
+<div class="champ"><b>Effet</b>Drame, relief, mystère, profondeur psychologique.</div>
+<div class="champ"><b>Origine</b>De la skiagraphia grecque à Léonard, portée à l'extrême par Caravage (ténébrisme) et Rembrandt (<i>Bethsabée</i>, 1654)&nbsp;; héritée par l'expressionnisme allemand et le film noir.</div>
+</div></article>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Couleurs complémentaires et couleur d'accent">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<g transform="translate(70,100)">
+<path d="M 0,0 L 0,-46 A 46,46 0 0 1 39.8,-23 Z" fill="#D2382C"/>
+<path d="M 0,0 L 39.8,-23 A 46,46 0 0 1 39.8,23 Z" fill="#D97A2B"/>
+<path d="M 0,0 L 39.8,23 A 46,46 0 0 1 0,46 Z" fill="#D9C22B"/>
+<path d="M 0,0 L 0,46 A 46,46 0 0 1 -39.8,23 Z" fill="#3E8C4E"/>
+<path d="M 0,0 L -39.8,23 A 46,46 0 0 1 -39.8,-23 Z" fill="#2C5A8C"/>
+<path d="M 0,0 L -39.8,-23 A 46,46 0 0 1 0,-46 Z" fill="#6B3E8C"/>
+<line x1="0" y1="-52" x2="0" y2="52" stroke="#1B1B18" stroke-width="1.6" stroke-dasharray="4 3"/>
+</g>
+<rect x="170" y="46" width="112" height="108" fill="#DEDCD4" stroke="#1B1B18" stroke-width="1.4"/>
+<circle cx="245" cy="82" r="8" class="sv-red"/>
+<text x="182" y="172" class="sv-lab">accent 5 %</text>
+</svg></div>
+<div class="texte"><span class="num">27</span><h3>Couleur&nbsp;: complémentaires &amp; accent</h3><div class="en">Complementary colors / accent color</div>
+<div class="champ"><b>Définition</b>Les couleurs opposées sur la roue (rouge/vert, bleu/orange) se renforcent mutuellement&nbsp;; une petite touche saturée sur fond neutre devient aimant du regard.</div>
+<div class="champ"><b>Reconnaître</b>Contraste chaud/froid structurant, ou minuscule zone vive posée sur un point de force.</div>
+<div class="champ"><b>Effet</b>Complémentaires&nbsp;: vibration, énergie. Accent&nbsp;: point focal instantané. Une couleur doit dominer, l'autre ponctuer.</div>
+<div class="champ"><b>Origine</b>Théorie de la roue chromatique, peinture&nbsp;; l'étalonnage orange/teal du cinéma en est l'industrialisation.</div>
+</div></article>
+</section>
+
+<section class="cat" id="c7">
+<div class="cat-head"><span class="rom">VII</span><h2>Point de vue &amp; héritage du cinéma</h2></div>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Angles de prise de vue">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<circle cx="150" cy="96" r="12" class="sv-blue"/>
+<rect x="138" y="110" width="24" height="52" class="sv-blue"/>
+<rect x="42" y="26" width="26" height="16" fill="#1B1B18"/><path d="M 68,30 L 78,26 L 78,42 L 68,38 Z" fill="#1B1B18"/>
+<line x1="80" y1="40" x2="136" y2="84" class="sv-redl"/>
+<text x="30" y="18" class="sv-lab">plongée</text>
+<rect x="42" y="158" width="26" height="16" fill="#1B1B18"/><path d="M 68,162 L 78,158 L 78,174 L 68,170 Z" fill="#1B1B18"/>
+<line x1="80" y1="160" x2="136" y2="112" class="sv-redl"/>
+<text x="24" y="192" class="sv-lab">contre-plongée</text>
+<rect x="232" y="88" width="26" height="16" fill="#1B1B18"/><path d="M 232,92 L 222,88 L 222,104 L 232,100 Z" fill="#1B1B18"/>
+<line x1="220" y1="96" x2="164" y2="96" class="sv-grid"/>
+<text x="222" y="122" class="sv-lab">hauteur d'œil</text>
+</svg></div>
+<div class="texte"><span class="num">28</span><h3>Angle de prise de vue</h3><div class="en">Camera angle — high, low, eye level, dutch</div>
+<div class="champ"><b>Définition</b>La position de la caméra par rapport au sujet est un choix de composition&nbsp;: plongée, contre-plongée, hauteur d'œil, zénithal, ras du sol, cadre incliné (dutch angle).</div>
+<div class="champ"><b>Reconnaître</b>Verticales convergentes vers le haut (contre-plongée), sujet écrasé vu d'en haut (plongée), horizon penché (dutch).</div>
+<div class="champ"><b>Effet</b>Contre-plongée&nbsp;: puissance, monumentalité. Plongée&nbsp;: vulnérabilité, ordre cartographique. Dutch&nbsp;: instabilité, inquiétude.</div>
+<div class="champ"><b>Origine</b>Grammaire du cinéma&nbsp;; contre-plongées radicales de l'avant-garde constructiviste russe (Rodtchenko).</div>
+</div></article>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Blocking et composition planimétrique">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<path d="M 150,186 L 62,30 M 150,186 L 238,30" class="sv-grid-d"/>
+<path d="M 138,186 L 162,186 L 156,172 L 144,172 Z" fill="#1B1B18"/>
+<line x1="150" y1="1" x2="150" y2="199" class="sv-grid"/>
+<circle cx="150" cy="130" r="9" class="sv-blue"/>
+<circle cx="112" cy="88" r="7" class="sv-blue"/><circle cx="188" cy="88" r="7" class="sv-blue"/>
+<circle cx="150" cy="52" r="7" class="sv-red"/>
+<text x="176" y="188" class="sv-lab">caméra · vue de dessus</text>
+</svg></div>
+<div class="texte"><span class="num">29</span><h3>Blocking &amp; composition planimétrique</h3><div class="en">Blocking / planimetric staging</div>
+<div class="champ"><b>Définition</b>Disposition chorégraphiée des sujets dans le cadre — profondeurs étagées, alignements sur l'axe, frontalité assumée (composition planimétrique, perpendiculaire au décor).</div>
+<div class="champ"><b>Reconnaître</b>Sujets placés à des positions géométriques précises, symétrie frontale, décor «&nbsp;aplati&nbsp;» comme un décor de théâtre.</div>
+<div class="champ"><b>Effet</b>Hiérarchie visuelle nette, contrôle narratif, température émotionnelle particulière — le fameux deadpan de Wes Anderson.</div>
+<div class="champ"><b>Exemples</b><i>The Royal Tenenbaums</i>, <i>Moonrise Kingdom</i>&nbsp;; en photo, portraits de groupe frontaux et typologies à la Becher.</div>
+</div></article>
+
+<article class="fiche"><div class="schema">
+<svg viewBox="0 0 300 200" role="img" aria-label="Juxtaposition et contraste">
+<rect x="1" y="1" width="298" height="198" class="sv-frame"/>
+<rect x="1" y="1" width="149" height="198" fill="#3A3A35"/>
+<rect x="40" y="55" width="70" height="90" fill="none" stroke="#F4F3EF" stroke-width="2.4"/>
+<circle cx="225" cy="100" r="26" fill="none" stroke="#1B1B18" stroke-width="2.4"/>
+<text x="52" y="176" fill="#F4F3EF" style="font-family:'Space Mono',monospace;font-size:9px">ancien</text>
+<text x="204" y="176" class="sv-lab">nouveau</text>
+</svg></div>
+<div class="texte"><span class="num">30</span><h3>Juxtaposition</h3><div class="en">Juxtaposition / contrast</div>
+<div class="champ"><b>Définition</b>Deux éléments antithétiques — ancien/moderne, grand/petit, rigide/organique, ombre/lumière — cohabitent dans le même cadre et se commentent l'un l'autre.</div>
+<div class="champ"><b>Reconnaître</b>Le cadre se lit en deux temps&nbsp;; le sens naît de la collision, pas de chaque élément isolé.</div>
+<div class="champ"><b>Effet</b>Tension conceptuelle, ironie, commentaire — l'arme préférée de la photographie de rue.</div>
+<div class="champ"><b>Origine</b>Photographie documentaire et humaniste&nbsp;; principe de montage hérité du cinéma soviétique.</div>
+</div></article>
+</section>
+</main>
+
+<footer>
+Grammaire du cadre — 30 patterns, 7 familles. Schémas&nbsp;: gris = construction, rouge = points &amp; lignes de force, bleu = sujet. Taxonomie croisée avec les classes des datasets académiques CADB (13 classes) et KU-PCP (9 classes).
+</footer>
+
+<script>
+document.querySelectorAll('.tg').forEach(function(b){
+  b.addEventListener('click',function(){
+    var g=document.getElementById(b.dataset.ov);
+    var on=b.getAttribute('aria-pressed')==='true';
+    b.setAttribute('aria-pressed',on?'false':'true');
+    if(g){g.style.display=on?'none':'block';}
+  });
+});
+</script>
+</body>
+</html>
