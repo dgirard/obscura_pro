@@ -28,7 +28,7 @@ void main() {
   CardAccessService serviceFor({String? picks}) => CardAccessService(
         channel: channel,
         bookmarks: bookmarks,
-        directoryPicker: () async => picks,
+        directoryPicker: ({String? startAt}) async => picks,
       );
 
   group('offering volumes', () {

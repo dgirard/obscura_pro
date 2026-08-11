@@ -22,7 +22,8 @@ class VolumeScreen extends ConsumerWidget {
           Text('Sélection de la carte', style: ObscuraTypography.headlineLarge),
           const SizedBox(height: ObscuraSpacing.controlGap),
           Text(
-            'Obscura Pro travaille directement sur la carte, sans import.',
+            'Choisissez le volume à ouvrir. Obscura Pro travaille directement '
+            'sur la carte, en lecture seule, sans import.',
             style: ObscuraTypography.bodyMedium
                 .copyWith(color: ObscuraColors.textSecondary),
           ),
@@ -37,7 +38,12 @@ class VolumeScreen extends ConsumerWidget {
               ),
               data: (volumes) => volumes.isEmpty
                   ? const _NoVolumes()
-                  : _VolumeList(volumes: volumes),
+                  : _VolumeList(
+                      volumes: volumes,
+                      onChoose: (volume) => ref
+                          .read(cardSelectionProvider.notifier)
+                          .openViaPanel(startAt: volume.path),
+                    ),
             ),
           ),
           if (selection is CardSelectionRejected)
@@ -79,9 +85,10 @@ class VolumeScreen extends ConsumerWidget {
 }
 
 class _VolumeList extends StatelessWidget {
-  const _VolumeList({required this.volumes});
+  const _VolumeList({required this.volumes, required this.onChoose});
 
   final List<MountedVolume> volumes;
+  final void Function(MountedVolume volume) onChoose;
 
   @override
   Widget build(BuildContext context) {
@@ -90,49 +97,103 @@ class _VolumeList extends StatelessWidget {
       itemCount: volumes.length,
       separatorBuilder: (_, _) =>
           const SizedBox(height: ObscuraSpacing.controlGap),
-      itemBuilder: (context, i) => _VolumeTile(volume: volumes[i]),
+      itemBuilder: (context, i) => _VolumeTile(
+        volume: volumes[i],
+        onTap: () => onChoose(volumes[i]),
+      ),
     );
   }
 }
 
-class _VolumeTile extends StatelessWidget {
-  const _VolumeTile({required this.volume});
+/// One mounted volume, offered as a choice.
+///
+/// It looks like a button and behaves like one. Before it did neither: it
+/// listed the user's card and ignored every click, because the only way in was
+/// a separate button lower down the screen. A row that names the thing you want
+/// and does nothing when you press it does not read as "inert" — it reads as
+/// broken.
+///
+/// Choosing one still opens the system panel. Under the sandbox that panel is
+/// where the grant is made and it cannot be skipped; what a tap does is open it
+/// already inside the chosen volume, so the confirmation is one click rather
+/// than a hunt.
+class _VolumeTile extends StatefulWidget {
+  const _VolumeTile({required this.volume, required this.onTap});
 
   final MountedVolume volume;
+  final VoidCallback onTap;
+
+  @override
+  State<_VolumeTile> createState() => _VolumeTileState();
+}
+
+class _VolumeTileState extends State<_VolumeTile> {
+  bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(ObscuraSpacing.overlayPadding),
-      decoration: BoxDecoration(
-        color: ObscuraColors.elevated,
-        border: Border.all(color: ObscuraColors.border),
-        borderRadius: BorderRadius.circular(ObscuraRadii.base),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.sd_card, size: 20, color: ObscuraColors.textSecondary),
-          const SizedBox(width: ObscuraSpacing.overlayPadding),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    final volume = widget.volume;
+
+    return Semantics(
+      button: true,
+      label: 'Ouvrir ${volume.name}',
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 90),
+            key: Key('volume-tile-${volume.path}'),
+            padding: const EdgeInsets.all(ObscuraSpacing.overlayPadding),
+            decoration: BoxDecoration(
+              // "Subtle dark gray backgrounds that brighten on hover."
+              color: _hovered
+                  ? ObscuraColors.surfaceContainerHigh
+                  : ObscuraColors.elevated,
+              border: Border.all(
+                color:
+                    _hovered ? ObscuraColors.textSecondary : ObscuraColors.border,
+              ),
+              borderRadius: BorderRadius.circular(ObscuraRadii.base),
+            ),
+            child: Row(
               children: [
-                Text(volume.name, style: ObscuraTypography.bodyMedium),
-                Text(
-                  volume.path,
-                  style: ObscuraTypography.bodySmall
-                      .copyWith(color: ObscuraColors.textSecondary),
+                const Icon(Icons.sd_card,
+                    size: 20, color: ObscuraColors.textSecondary),
+                const SizedBox(width: ObscuraSpacing.overlayPadding),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(volume.name, style: ObscuraTypography.bodyMedium),
+                      Text(
+                        volume.path,
+                        style: ObscuraTypography.bodySmall
+                            .copyWith(color: ObscuraColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+                if (volume.freeBytes != null)
+                  Text(
+                    '${formatBytes(volume.freeBytes!)} libres',
+                    style: ObscuraTypography.monoData
+                        .copyWith(color: ObscuraColors.textSecondary),
+                  ),
+                const SizedBox(width: ObscuraSpacing.overlayPadding),
+                Icon(
+                  Icons.chevron_right,
+                  size: 18,
+                  color: _hovered
+                      ? ObscuraColors.textPrimary
+                      : ObscuraColors.textSecondary,
                 ),
               ],
             ),
           ),
-          if (volume.freeBytes != null)
-            Text(
-              '${formatBytes(volume.freeBytes!)} libres',
-              style: ObscuraTypography.monoData
-                  .copyWith(color: ObscuraColors.textSecondary),
-            ),
-        ],
+        ),
       ),
     );
   }

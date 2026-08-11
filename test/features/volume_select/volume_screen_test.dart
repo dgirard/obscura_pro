@@ -16,10 +16,14 @@ void main() {
   late RecordingBridge bridge;
   late FakeVolumeChannel channel;
 
+  /// Where the open panel was told to start, recorded per call.
+  final startedAt = <String?>[];
+
   setUp(() async {
     storage = await Directory.systemTemp.createTemp('obscura_screen');
     bridge = RecordingBridge();
     channel = FakeVolumeChannel();
+    startedAt.clear();
   });
 
   tearDown(() async {
@@ -35,7 +39,10 @@ void main() {
           CardAccessService(
             channel: channel,
             bookmarks: bookmarks,
-            directoryPicker: () async => picks,
+            directoryPicker: ({String? startAt}) async {
+              startedAt.add(startAt);
+              return picks;
+            },
           ),
         ),
       ],
@@ -88,5 +95,39 @@ void main() {
     // Seeing a volume is not the same as being allowed to read it: the sandbox
     // grant only exists once the user has picked it in the panel.
     expect(find.byKey(const Key('open-panel')), findsOneWidget);
+  });
+
+  testWidgets('clicking a listed card opens the panel on that card',
+      (tester) async {
+    channel.volumes = [
+      fakeVolume('Buzz', path: '/Volumes/Buzz'),
+      fakeVolume('Untitled', path: '/Volumes/Untitled'),
+    ];
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('volume-tile-/Volumes/Untitled')));
+    await tester.pumpAndSettle();
+
+    // A row that names the user's card and ignores every click does not read
+    // as inert, it reads as broken — and the panel it opens starts inside the
+    // volume they pointed at, so confirming is one click and not a hunt.
+    expect(startedAt, ['/Volumes/Untitled']);
+  });
+
+  testWidgets('the button still opens the panel with nowhere in particular',
+      (tester) async {
+    channel.volumes = [fakeVolume('Untitled', path: '/Volumes/Untitled')];
+
+    await tester.pumpWidget(harness());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('open-panel')));
+    await tester.pumpAndSettle();
+
+    // The manual route stays: a card the enumeration missed is exactly the
+    // case where the user needs to point at it themselves.
+    expect(startedAt, [null]);
   });
 }

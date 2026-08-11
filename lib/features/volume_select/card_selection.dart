@@ -68,10 +68,10 @@ class CardSelectionNotifier extends Notifier<CardSelection> {
   /// Still goes through the open panel: under the sandbox the app has no
   /// standing access to a mounted volume just because it can see it in the
   /// list. Seeing and reading are different grants.
-  Future<void> openViaPanel() async {
+  Future<void> openViaPanel({String? startAt}) async {
     state = const CardSelectionBusy();
     try {
-      final check = await _service.chooseCard();
+      final check = await _service.chooseCard(startAt: startAt);
       if (check == null) {
         state = const CardSelectionIdle();
         return;

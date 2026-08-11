@@ -10,7 +10,7 @@ import 'volume_channel.dart';
 
 /// The open panel, injectable so the one place a sandbox grant is created can
 /// be exercised without an NSOpenPanel.
-typedef DirectoryPicker = Future<String?> Function();
+typedef DirectoryPicker = Future<String?> Function({String? startAt});
 
 /// Opening a card, holding on to it, and letting go of it safely.
 class CardAccessService {
@@ -38,8 +38,13 @@ class CardAccessService {
   /// keeps a card written by another body readable.
   static final _dcfFolder = RegExp(r'^\d{3}[A-Z0-9_]{5}$');
 
-  static Future<String?> _openPanel() =>
-      getDirectoryPath(confirmButtonText: 'Ouvrir la carte');
+  /// [startAt] opens the panel already inside that volume, so choosing a card
+  /// the picker has already listed is one confirmation rather than a hunt
+  /// through the file system.
+  static Future<String?> _openPanel({String? startAt}) => getDirectoryPath(
+        initialDirectory: startAt,
+        confirmButtonText: 'Ouvrir la carte',
+      );
 
   /// The card currently open, if any.
   String? get openCardPath => _openCardPath;
@@ -67,9 +72,12 @@ class CardAccessService {
   /// not pointed at. Seeing a volume in the list and being allowed to read it
   /// are different things.
   ///
+  /// [startAt] is the volume the user pointed at in the app's own list. It
+  /// only positions the panel; the grant still comes from their confirmation.
+  ///
   /// Returns null when the user dismissed the panel.
-  Future<CardCheck?> chooseCard() async {
-    final path = await _pickDirectory();
+  Future<CardCheck?> chooseCard({String? startAt}) async {
+    final path = await _pickDirectory(startAt: startAt);
     if (path == null) return null;
 
     final check = await inspect(path);
