@@ -285,6 +285,10 @@ const String syntheticDngSerial = '5301234';
 SyntheticDng buildSyntheticDng({
   TiffByteOrder order = TiffByteOrder.littleEndian,
   SerialSource serial = SerialSource.exifBodySerialNumber,
+  /// Overrides the EXIF capture time. Catalog tests vary this to prove two
+  /// files sharing a DCF radical still receive different stable keys.
+  String dateTimeOriginal = syntheticDngDateTimeOriginal,
+  String serialNumber = syntheticDngSerial,
   bool cyclicIfdChain = false,
   bool fullPreviewBeyondEndOfFile = false,
   bool extraPreviewInIfd1 = false,
@@ -300,9 +304,9 @@ SyntheticDng buildSyntheticDng({
   final extraBlob = extraPreview == null ? null : BlobSpec(extraPreview);
 
   final exifIfd = IfdSpec({
-    0x9003: const AsciiField(syntheticDngDateTimeOriginal),
+    0x9003: AsciiField(dateTimeOriginal),
     if (serial == SerialSource.exifBodySerialNumber)
-      0xA431: const AsciiField(syntheticDngSerial),
+      0xA431: AsciiField(serialNumber),
   });
 
   final rawIfd = IfdSpec({
@@ -349,7 +353,7 @@ SyntheticDng buildSyntheticDng({
     0x014A: PointerField([rawIfd, previewIfd]),
     0x8769: PointerField.to(exifIfd),
     if (serial == SerialSource.dngCameraSerialNumber)
-      0xC62F: const AsciiField(syntheticDngSerial),
+      0xC62F: AsciiField(serialNumber),
   });
 
   if (cyclicIfdChain) {
