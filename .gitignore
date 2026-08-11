@@ -43,3 +43,10 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Camera sample files. A single Q3 DNG is ~80 MB and would live in the history
+# forever; the fixture checklist in test/fixtures/README.md says where to put
+# one locally instead.
+*.DNG
+*.dng
+test/fixtures/samples/
