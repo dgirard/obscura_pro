@@ -155,6 +155,7 @@ class DcfScanner {
       gridPreview: header?.gridPreview,
       viewerPreview: header?.viewerPreview,
       orientation: header?.orientation ?? ExifOrientation.normal,
+      settings: header?.settings ?? CaptureSettings.empty,
     );
   }
 

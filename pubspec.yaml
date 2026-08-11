@@ -15,8 +15,15 @@ dependencies:
   flutter_riverpod: ^3.0.0
   image: ^4.9.1
   macos_secure_bookmarks: ^0.2.1
+  # Annotations only, so the preview parser stays free of any Flutter import
+  # and can be reasoned about as plain Dart.
+  meta: ^1.17.0
   path: ^1.9.1
   path_provider: ^2.1.6
+  # Matrix4/Vector3 for the viewer's coordinate stack. Declared directly rather
+  # than leaned on through Flutter's re-export: it is a real dependency of the
+  # geometry, not an accident of what widgets happen to expose.
+  vector_math: ^2.2.0
 
 dev_dependencies:
   flutter_test:

@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'package:meta/meta.dart';
+
 import 'ifd_parser.dart';
 
 /// How many bytes of each file the catalog scan reads to obtain, in one go, the
@@ -46,9 +48,95 @@ abstract final class PreviewTags {
   static const pixelYDimension = 0xA003;
   static const bodySerialNumber = 0xA431;
 
+  // Exposure, for the viewer overlay.
+  static const model = 0x0110;
+  static const exposureTime = 0x829A;
+  static const fNumber = 0x829D;
+  static const isoSpeedRatings = 0x8827;
+  static const focalLength = 0x920A;
+  static const focalLengthIn35mm = 0xA405;
+  static const lensModel = 0xA434;
+
   /// DNG's own serial tag, present on files whose EXIF IFD omits
   /// [bodySerialNumber].
   static const cameraSerialNumber = 0xC62F;
+}
+
+/// What the camera was set to, as the viewer overlay states it.
+///
+/// Every field is nullable and independently so. A photograph off a card can be
+/// missing any of them — a manual lens reports no aperture, a firmware update
+/// changes what gets written — and the overlay has to show what is known rather
+/// than refuse the whole line because one tag is absent.
+@immutable
+final class CaptureSettings {
+  const CaptureSettings({
+    this.model,
+    this.lens,
+    this.exposureSeconds,
+    this.aperture,
+    this.iso,
+    this.focalLengthMm,
+    this.focalLength35mm,
+  });
+
+  static const empty = CaptureSettings();
+
+  final String? model;
+  final String? lens;
+
+  /// Shutter time in seconds. Kept as a number rather than a string so the
+  /// overlay can format it and a future filter can compare it.
+  final double? exposureSeconds;
+
+  final double? aperture;
+  final int? iso;
+  final double? focalLengthMm;
+
+  /// Full-frame equivalent focal length, which on a Q3 is where the digital
+  /// crop shows up: the lens is 28 mm and the 35/50/75/90 crops report as such.
+  final int? focalLength35mm;
+
+  bool get isEmpty =>
+      exposureSeconds == null &&
+      aperture == null &&
+      iso == null &&
+      focalLengthMm == null;
+
+  /// `1/250` under a second, `2s` above it — how a camera states it, and how a
+  /// photographer reads it.
+  String? get shutterLabel {
+    final seconds = exposureSeconds;
+    if (seconds == null || seconds <= 0) return null;
+    if (seconds >= 1) {
+      final whole = seconds.round();
+      return (seconds - whole).abs() < 0.05 ? '${whole}s' : '${seconds.toStringAsFixed(1)}s';
+    }
+    return '1/${(1 / seconds).round()}';
+  }
+
+  /// `f/1.7`, with the trailing zero dropped: `f/8` and not `f/8.0`.
+  String? get apertureLabel {
+    final value = aperture;
+    if (value == null || value <= 0) return null;
+    final text = value.toStringAsFixed(1);
+    return 'f/${text.endsWith('.0') ? text.substring(0, text.length - 2) : text}';
+  }
+
+  String? get isoLabel => iso == null ? null : 'ISO $iso';
+
+  /// The equivalent focal length when the camera reported one, because on a Q3
+  /// that is the number that changed when the user turned the crop ring.
+  String? get focalLabel {
+    final equivalent = focalLength35mm;
+    if (equivalent != null) return '$equivalent mm';
+    final actual = focalLengthMm;
+    return actual == null ? null : '${actual.round()} mm';
+  }
+
+  @override
+  String toString() => 'CaptureSettings('
+      '${[focalLabel, shutterLabel, apertureLabel, isoLabel].where((s) => s != null).join(' ')})';
 }
 
 /// The eight EXIF orientations, named.
@@ -148,6 +236,7 @@ final class PhotoHeader {
     required this.dateTimeOriginal,
     required this.bodySerial,
     this.orientation = ExifOrientation.normal,
+    this.settings = CaptureSettings.empty,
   });
 
   /// Located preview streams in discovery order. May be empty: a DNG written
@@ -166,6 +255,9 @@ final class PhotoHeader {
   /// when the file declares nothing, which is also what an unreadable value
   /// degrades to — turning a picture the wrong way is worse than not turning it.
   final int orientation;
+
+  /// Exposure as the camera recorded it, for the viewer overlay.
+  final CaptureSettings settings;
 
   /// Previews smallest first.
   ///
@@ -270,6 +362,7 @@ PreviewScanResult _scanTiff(Uint8List prefix, int fileLength) {
       dateTimeOriginal: collector.dateTimeOriginal,
       bodySerial: collector.bodySerial,
       orientation: collector.orientation,
+      settings: collector.settings,
     ),
   );
 }
@@ -300,6 +393,8 @@ class _Collector {
   int? _orientation;
 
   int get orientation => ExifOrientation.sanitize(_orientation);
+
+  CaptureSettings settings = CaptureSettings.empty;
 
   void walkChain(int firstOffset, {required int depth}) {
     var offset = firstOffset;
@@ -349,6 +444,8 @@ class _Collector {
     final raw = exif.field(PreviewTags.dateTimeOriginal);
     if (raw != null) dateTimeOriginal ??= parseExifDateTime(raw.asAscii());
     bodySerial ??= _readSerial(exif, PreviewTags.bodySerialNumber);
+    // IFD0 is the one that owns the EXIF pointer, so it is the right pair.
+    if (settings.isEmpty) settings = _settingsFrom(ifd0: ifd, exif: exif);
   }
 
   String? _readSerial(Ifd ifd, int tag) {
@@ -407,6 +504,37 @@ PreviewStream? _previewIn(TiffReader reader, Ifd ifd) {
   );
 }
 
+/// Reads the exposure tags out of an IFD0 / EXIF IFD pair.
+///
+/// Split out because a DNG and a plain JPEG reach the same two directories by
+/// different routes, and a second copy of this would be a second place for the
+/// tag numbers to be wrong in.
+CaptureSettings _settingsFrom({Ifd? ifd0, Ifd? exif}) {
+  double? rational(Ifd? ifd, int tag) {
+    final values = ifd?.field(tag)?.asRationals();
+    if (values == null || values.isEmpty) return null;
+    final value = values.first;
+    // A zero denominator is a malformed tag, not an infinity to propagate into
+    // a shutter-speed label.
+    return value.denominator == 0 ? null : value.numerator / value.denominator;
+  }
+
+  String? ascii(Ifd? ifd, int tag) {
+    final value = ifd?.field(tag)?.asAscii();
+    return (value == null || value.isEmpty) ? null : value.trim();
+  }
+
+  return CaptureSettings(
+    model: ascii(ifd0, PreviewTags.model),
+    lens: ascii(exif, PreviewTags.lensModel),
+    exposureSeconds: rational(exif, PreviewTags.exposureTime),
+    aperture: rational(exif, PreviewTags.fNumber),
+    iso: exif?.intValue(PreviewTags.isoSpeedRatings),
+    focalLengthMm: rational(exif, PreviewTags.focalLength),
+    focalLength35mm: exif?.intValue(PreviewTags.focalLengthIn35mm),
+  );
+}
+
 /// Parses EXIF's `YYYY:MM:DD HH:MM:SS`.
 ///
 /// Returned UTC-flagged although the camera writes no timezone: the flag keeps
@@ -438,6 +566,7 @@ PreviewScanResult _scanJpeg(Uint8List prefix, int fileLength) {
   int? fullWidth;
   int? fullHeight;
   int? orientation;
+  var settings = CaptureSettings.empty;
 
   try {
     final tiffBase = _findExifTiffBlock(prefix, fileLength);
@@ -455,6 +584,7 @@ PreviewScanResult _scanJpeg(Uint8List prefix, int fileLength) {
         final raw = exif.field(PreviewTags.dateTimeOriginal);
         if (raw != null) dateTimeOriginal = parseExifDateTime(raw.asAscii());
         bodySerial ??= exif.field(PreviewTags.bodySerialNumber)?.asAscii();
+        settings = _settingsFrom(ifd0: ifd0, exif: exif);
         fullWidth = exif.intValue(PreviewTags.pixelXDimension) ?? fullWidth;
         fullHeight = exif.intValue(PreviewTags.pixelYDimension) ?? fullHeight;
       }
@@ -503,6 +633,7 @@ PreviewScanResult _scanJpeg(Uint8List prefix, int fileLength) {
       dateTimeOriginal: dateTimeOriginal,
       bodySerial: (bodySerial?.isEmpty ?? true) ? null : bodySerial,
       orientation: ExifOrientation.sanitize(orientation),
+      settings: settings,
     ),
   );
 }

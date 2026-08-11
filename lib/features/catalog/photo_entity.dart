@@ -21,6 +21,7 @@ class PhotoEntity {
     this.gridPreview,
     this.viewerPreview,
     this.orientation = ExifOrientation.normal,
+    this.settings = CaptureSettings.empty,
   });
 
   /// DCF file radical, e.g. `L1000863`. The camera's own name for the picture,
@@ -52,6 +53,9 @@ class PhotoEntity {
   /// this tag to say which way is up, so a portrait frame arrives landscape and
   /// has to be turned before it is shown.
   final int orientation;
+
+  /// Exposure as the camera recorded it, for the viewer's overlay.
+  final CaptureSettings settings;
 
   /// True when the photograph was shot with the camera turned.
   bool get isPortrait => ExifOrientation.swapsAxes(orientation);

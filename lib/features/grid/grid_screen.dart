@@ -8,6 +8,7 @@ import '../../app/theme.dart';
 import '../catalog/dcf_scanner.dart';
 import '../catalog/photo_entity.dart';
 import '../volume_select/card_selection.dart';
+import '../viewer/viewer_screen.dart';
 import 'photo_cell.dart';
 import 'thumbnail_provider.dart';
 
@@ -328,8 +329,13 @@ class LibraryScreen extends ConsumerWidget {
                   .copyWith(color: ObscuraColors.leicaRed),
             ),
           ),
-          data: (catalog) =>
-              LibraryGrid(photos: catalog.photos, onOpen: onOpen),
+          data: (catalog) => ref.watch(viewerOpenProvider)
+              ? ViewerScreen(photos: catalog.photos)
+              : LibraryGrid(
+                  photos: catalog.photos,
+                  onOpen: onOpen ??
+                      (_) => ref.read(viewerOpenProvider.notifier).open(),
+                ),
         );
   }
 }

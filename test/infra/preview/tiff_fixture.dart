@@ -340,6 +340,11 @@ SyntheticDng buildSyntheticDng({
   /// EXIF `Orientation` written into IFD0. Null omits the tag entirely, which
   /// is the case a file with no orientation at all exercises.
   int? orientation,
+
+  /// Writes the exposure tags the viewer overlay reads. Off by default so the
+  /// parser fixtures stay minimal; a photograph missing all of them is itself a
+  /// case the overlay has to survive.
+  bool exposure = false,
 }) {
   final thumbnail = decodable
       ? realJpeg(width: thumbnailPixels.width, height: thumbnailPixels.height)
@@ -371,6 +376,16 @@ SyntheticDng buildSyntheticDng({
     0x9003: AsciiField(dateTimeOriginal),
     if (serial == SerialSource.exifBodySerialNumber)
       0xA431: AsciiField(serialNumber),
+    if (exposure) ...{
+      // 1/250 s, f/1.7, ISO 400, 28 mm reported as a 35 mm crop — a plausible
+      // Q3 frame with the crop ring turned.
+      0x829A: const RationalField([(numerator: 1, denominator: 250)]),
+      0x829D: const RationalField([(numerator: 17, denominator: 10)]),
+      0x8827: const ShortField([400]),
+      0x920A: const RationalField([(numerator: 28, denominator: 1)]),
+      0xA405: const ShortField([35]),
+      0xA434: const AsciiField('Summilux 1:1.7/28 ASPH.'),
+    },
   });
 
   final rawIfd = IfdSpec({
@@ -406,6 +421,7 @@ SyntheticDng buildSyntheticDng({
         });
 
   final ifd0 = IfdSpec({
+    if (exposure) 0x0110: const AsciiField('LEICA Q3'),
     0x00FE: const LongField([1]),
     0x0100: LongField([decodable ? thumbnailPixels.width : 320]),
     0x0101: LongField([decodable ? thumbnailPixels.height : 213]),
