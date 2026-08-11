@@ -72,6 +72,7 @@ final class VolumeChannel: NSObject {
       .volumeIsRemovableKey,
       .volumeIsEjectableKey,
       .volumeIsInternalKey,
+      .volumeIsRootFileSystemKey,
       .volumeAvailableCapacityKey,
       .volumeTotalCapacityKey,
     ]
@@ -91,6 +92,7 @@ final class VolumeChannel: NSObject {
         "isRemovable": values.volumeIsRemovable ?? false,
         "isEjectable": values.volumeIsEjectable ?? false,
         "isInternal": values.volumeIsInternal ?? false,
+        "isRoot": values.volumeIsRootFileSystem ?? false,
         // Omitted rather than zeroed when the file system reports nothing: a
         // missing capacity and a full card must not look alike.
         "freeBytes": values.volumeAvailableCapacity as Any,

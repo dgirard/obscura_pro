@@ -71,7 +71,10 @@ MountedVolume fakeVolume(
   String? path,
   bool removable = true,
   bool ejectable = true,
-  bool internal = false,
+  /// True by default: a card in a Mac's own SD slot is internal, and that is
+  /// the ordinary case rather than the exotic one.
+  bool internal = true,
+  bool root = false,
   int? freeBytes = 32 * 1000 * 1000 * 1000,
 }) =>
     MountedVolume(
@@ -80,6 +83,7 @@ MountedVolume fakeVolume(
       isRemovable: removable,
       isEjectable: ejectable,
       isInternal: internal,
+      isRoot: root,
       freeBytes: freeBytes,
     );
 

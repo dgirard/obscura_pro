@@ -30,7 +30,12 @@ void main() {
   });
 
   group('listVolumes', () {
-    test('reports the startup disk as no candidate for a card', () async {
+    test('offers the card in the built-in reader and not the startup disk',
+        () async {
+      // Exactly what the resource keys report on a real Mac: the startup disk,
+      // and a Leica card in the machine's own SD slot. That slot is on an
+      // internal bus, so the card comes back `isInternal: true` — which is why
+      // this fixture, and not a tidier one, is the one that matters.
       reply = (_) => <Object?>[
             <String, Object?>{
               'path': '/',
@@ -38,13 +43,15 @@ void main() {
               'isRemovable': false,
               'isEjectable': false,
               'isInternal': true,
+              'isRoot': true,
             },
             <String, Object?>{
-              'path': '/Volumes/LEICA Q3',
-              'name': 'LEICA Q3',
+              'path': '/Volumes/Untitled',
+              'name': 'Untitled',
               'isRemovable': true,
-              'isEjectable': true,
-              'isInternal': false,
+              'isEjectable': false,
+              'isInternal': true,
+              'isRoot': false,
               'freeBytes': 32000000000,
             },
           ];
@@ -52,11 +59,28 @@ void main() {
       final volumes = await VolumeChannel().listVolumes();
 
       expect(log.single.method, 'listVolumes');
-      expect(volumes.map((v) => v.name), ['Macintosh HD', 'LEICA Q3']);
+      expect(volumes.map((v) => v.name), ['Macintosh HD', 'Untitled']);
       expect(
         volumes.where((v) => v.isCardCandidate).map((v) => v.path),
-        ['/Volumes/LEICA Q3'],
+        ['/Volumes/Untitled'],
       );
+    });
+
+    test('offers a card in an external reader too', () async {
+      reply = (_) => <Object?>[
+            <String, Object?>{
+              'path': '/Volumes/LEICA Q3',
+              'name': 'LEICA Q3',
+              'isRemovable': true,
+              'isEjectable': true,
+              'isInternal': false,
+              'isRoot': false,
+            },
+          ];
+
+      final volume = (await VolumeChannel().listVolumes()).single;
+
+      expect(volume.isCardCandidate, isTrue);
     });
 
     test('tolerates a volume whose capacity the file system did not report', () async {

@@ -13,6 +13,7 @@ class MountedVolume {
     required this.isRemovable,
     required this.isEjectable,
     this.isInternal = false,
+    this.isRoot = false,
     this.freeBytes,
     this.totalBytes,
   });
@@ -26,18 +27,31 @@ class MountedVolume {
   /// The volume can be unmounted under software control.
   final bool isEjectable;
 
-  /// Built into the machine. Checked explicitly rather than inferred from the
-  /// absence of the other two: a disk image is neither internal nor removable.
+  /// Sits on an internal bus.
+  ///
+  /// Reported, but deliberately *not* used to decide what is a card. This key
+  /// describes the bus, not the medium: a Mac's built-in SD reader is internal,
+  /// and the card in it is the single most important volume this app will ever
+  /// see. Measured on the real reader — `Protocol: Secure Digital`,
+  /// `Device Location: Internal`, `Removable Media: Removable` — where filtering
+  /// on this key hid the Leica card while leaving two disk images in the picker.
   final bool isInternal;
+
+  /// The volume the system booted from.
+  final bool isRoot;
 
   /// Null when the file system did not report a capacity, which is normal for
   /// some mounts. Distinct from zero, which would mean a full card.
   final int? freeBytes;
   final int? totalBytes;
 
-  /// Whether this volume is worth offering as a camera card. The startup disk
-  /// is filtered out of the picker rather than left for the user to avoid.
-  bool get isCardCandidate => !isInternal && (isRemovable || isEjectable);
+  /// Whether this volume is worth offering as a camera card.
+  ///
+  /// Removable or ejectable, and not the startup disk. The test is deliberately
+  /// loose — an external SSD passes it — because what actually decides is the
+  /// `DCIM/` check that follows, and a picker that hides the user's card is a
+  /// far worse failure than one that lists a volume they will not choose.
+  bool get isCardCandidate => !isRoot && (isRemovable || isEjectable);
 
   factory MountedVolume.fromMap(Map<Object?, Object?> map) => MountedVolume(
         name: map['name'] as String? ?? '',
@@ -45,6 +59,7 @@ class MountedVolume {
         isRemovable: map['isRemovable'] as bool? ?? false,
         isEjectable: map['isEjectable'] as bool? ?? false,
         isInternal: map['isInternal'] as bool? ?? false,
+        isRoot: map['isRoot'] as bool? ?? false,
         freeBytes: (map['freeBytes'] as num?)?.toInt(),
         totalBytes: (map['totalBytes'] as num?)?.toInt(),
       );

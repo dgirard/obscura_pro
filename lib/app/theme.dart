@@ -234,6 +234,22 @@ ThemeData buildObscuraTheme() {
       thickness: ObscuraStrokes.hairline,
       space: ObscuraStrokes.hairline,
     ),
+    // "Action Buttons: subtle dark gray backgrounds that brighten on hover. No
+    // gradients." Without this, Material fills buttons with `colorScheme
+    // .primary` — a salmon pink that reads as a warning and is nowhere in the
+    // palette's intent. Leica red stays reserved for status and brand marks.
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: ObscuraColors.surfaceContainerHigh,
+        foregroundColor: ObscuraColors.textPrimary,
+        disabledBackgroundColor: ObscuraColors.surfaceContainerLow,
+        disabledForegroundColor: ObscuraColors.textSecondary,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(ObscuraRadii.base),
+        ),
+      ),
+    ),
     cardTheme: CardThemeData(
       color: ObscuraColors.elevated,
       elevation: 0,
