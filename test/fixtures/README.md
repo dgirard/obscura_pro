@@ -10,7 +10,7 @@ Those figures are below, and they were measured, not estimated.
 
 ## Measured on real hardware
 
-Leica Q3, body serial `REDACTED`, card written 2026-04, exFAT, 941 DNG + 941 JPG
+Leica Q3 (body serial withheld), card written 2026-04, exFAT, 941 DNG + 941 JPG
 (plus 2 MP4) in `DCIM/100LEICA`. Reproduce with:
 
 ```

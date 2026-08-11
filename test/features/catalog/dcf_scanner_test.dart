@@ -134,7 +134,7 @@ void main() {
 
       await card.dispose();
       card = await FakeCard.create();
-      await card.addPhoto('L1000001', serial: 'REDACTED');
+      await card.addPhoto('L1000001', serial: '1234567');
       final second = (await scanner.scan(card.path)).photos.single;
 
       expect(second.key, isNot(first.key));
@@ -168,12 +168,12 @@ void main() {
     });
 
     test('reads the capture time and body serial', () async {
-      await card.addPhoto('L1000863', serial: 'REDACTED');
+      await card.addPhoto('L1000863', serial: '1234567');
 
       final photo = (await scanner.scan(card.path)).photos.single;
 
       expect(photo.captureTime, isNotNull);
-      expect(photo.bodySerial, 'REDACTED');
+      expect(photo.bodySerial, '1234567');
     });
 
     test('totals the bytes of every file in the photograph', () async {

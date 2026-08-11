@@ -5,7 +5,7 @@ import 'ifd_parser.dart';
 /// How many bytes of each file the catalog scan reads to obtain, in one go, the
 /// stable-key EXIF fields and every embedded preview's byte range.
 ///
-/// Measured on a Leica Q3 (firmware as of 2026-04, body REDACTED): 8 KB already
+/// Measured on a Leica Q3 (firmware as of 2026-04): 8 KB already
 /// resolves IFD0, the SubIFD chain, the EXIF IFD and all three preview ranges
 /// on every one of 941 files from a full card. This doubles that for margin
 /// against other bodies and firmware, and is still 16x smaller than the
