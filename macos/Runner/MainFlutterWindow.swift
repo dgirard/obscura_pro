@@ -9,6 +9,8 @@ class MainFlutterWindow: NSWindow {
     self.setFrame(windowFrame, display: true)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
+    VolumeChannel.register(
+      with: flutterViewController.registrar(forPlugin: "VolumeChannel"))
 
     super.awakeFromNib()
   }

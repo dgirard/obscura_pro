@@ -1,0 +1,169 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:file_selector/file_selector.dart';
+import 'package:path/path.dart' as p;
+
+import 'bookmark_store.dart';
+import 'models.dart';
+import 'volume_channel.dart';
+
+/// The open panel, injectable so the one place a sandbox grant is created can
+/// be exercised without an NSOpenPanel.
+typedef DirectoryPicker = Future<String?> Function();
+
+/// Opening a card, holding on to it, and letting go of it safely.
+class CardAccessService {
+  CardAccessService({
+    required VolumeChannel channel,
+    required BookmarkStore bookmarks,
+    DirectoryPicker? directoryPicker,
+  })  : _channel = channel,
+        _bookmarks = bookmarks,
+        _pickDirectory = directoryPicker ?? _openPanel;
+
+  final VolumeChannel _channel;
+  final BookmarkStore _bookmarks;
+  final DirectoryPicker _pickDirectory;
+
+  final _lost = StreamController<String>.broadcast();
+  StreamSubscription<VolumeEvent>? _watch;
+  String? _openCardPath;
+
+  /// Key under which the most recent card is remembered.
+  static const lastCardKey = 'last_card';
+
+  /// DCF folder names: three digits then five free characters, giving
+  /// `100LEICA` on a Q3. Matching the standard rather than the Leica spelling
+  /// keeps a card written by another body readable.
+  static final _dcfFolder = RegExp(r'^\d{3}[A-Z0-9_]{5}$');
+
+  static Future<String?> _openPanel() =>
+      getDirectoryPath(confirmButtonText: 'Ouvrir la carte');
+
+  /// The card currently open, if any.
+  String? get openCardPath => _openCardPath;
+
+  /// Fires with the card's path when the volume goes away underneath us.
+  ///
+  /// This is how an operation in flight learns to stop. On a non-journaled
+  /// exFAT card a write interrupted by the medium disappearing is exactly the
+  /// failure the app exists to avoid, so `willUnmount` is treated as loss —
+  /// the last moment at which stopping still helps.
+  Stream<String> get cardLost => _lost.stream;
+
+  /// Volumes that could plausibly be a camera card.
+  Future<List<MountedVolume>> availableCards() async {
+    final volumes = await _channel.listVolumes();
+    return volumes.where((v) => v.isCardCandidate).toList(growable: false);
+  }
+
+  Stream<VolumeEvent> watchVolumes() => _channel.watchVolumes();
+
+  /// Asks the user to choose the card, then opens it.
+  ///
+  /// The open panel is not merely a convenience: under the sandbox the user's
+  /// selection *is* the grant, so there is no way to reach a volume the user has
+  /// not pointed at. Seeing a volume in the list and being allowed to read it
+  /// are different things.
+  ///
+  /// Returns null when the user dismissed the panel.
+  Future<CardCheck?> chooseCard() async {
+    final path = await _pickDirectory();
+    if (path == null) return null;
+
+    final check = await inspect(path);
+    if (check is CardMissingDcim) return check;
+
+    // Minted here, in the same turn as the selection: the ability to create a
+    // bookmark depends on the panel's implicit grant still being live, so
+    // deferring it to first use fails.
+    await _bookmarks.save(lastCardKey, path);
+    await _hold(path);
+    return check;
+  }
+
+  /// Re-opens the card remembered from a previous session, if it is back.
+  Future<CardCheck?> reopenLastCard() async {
+    final resolution = await _bookmarks.resolve(lastCardKey);
+    if (resolution is! BookmarkResolved) return null;
+
+    final check = await inspect(resolution.path);
+    if (check is CardMissingDcim) return check;
+
+    await _hold(resolution.path);
+    return check;
+  }
+
+  Future<void> forgetLastCard() => _bookmarks.forget(lastCardKey);
+
+  /// Takes the sandbox grant and starts listening for the card leaving.
+  Future<void> _hold(String path) async {
+    await closeCard();
+    await _bookmarks.beginAccess(path);
+    _openCardPath = path;
+    _watch = _channel.watchVolumes().listen(_onVolumeEvent);
+  }
+
+  void _onVolumeEvent(VolumeEvent event) {
+    final open = _openCardPath;
+    if (open == null) return;
+    if (event.kind == VolumeEventKind.mounted) return;
+    // Path prefix rather than equality: the notification names the volume,
+    // while the open card may be a folder within it.
+    if (open != event.path && !p.isWithin(event.path, open)) return;
+    _lost.add(open);
+  }
+
+  /// Releases the sandbox grant and stops watching.
+  ///
+  /// Apple is explicit that an unbalanced start leaks kernel resources, so this
+  /// runs even when the card vanished — there is still a grant to give back.
+  Future<void> closeCard() async {
+    await _watch?.cancel();
+    _watch = null;
+    final path = _openCardPath;
+    _openCardPath = null;
+    if (path != null) await _bookmarks.endAccess(path);
+  }
+
+  /// Runs [body] with the sandbox grant for [path] held and always released.
+  Future<T> withCardAccess<T>(String path, Future<T> Function() body) =>
+      _bookmarks.withAccess(path, body);
+
+  /// Whether [path] is laid out like a camera card.
+  ///
+  /// Checked before a scan so that picking the wrong folder produces a clear
+  /// answer instead of an empty library the user has to interpret.
+  Future<CardCheck> inspect(String path) async {
+    final dcim = Directory(p.join(path, 'DCIM'));
+    if (!await dcim.exists()) return CardMissingDcim(path);
+
+    final folders = <String>[];
+    await for (final entry in dcim.list(followLinks: false)) {
+      if (entry is! Directory) continue;
+      final name = p.basename(entry.path);
+      if (_dcfFolder.hasMatch(name)) folders.add(name);
+    }
+    folders.sort();
+
+    if (folders.isEmpty) return CardEmpty(dcim.path);
+    return CardAccepted(dcimPath: dcim.path, cameraFolders: folders);
+  }
+
+  /// Unmounts and ejects the card.
+  ///
+  /// On a non-journaled exFAT volume this is the point at which writes are
+  /// guaranteed to have landed, so a refusal is surfaced with its reason rather
+  /// than retried or swallowed.
+  Future<EjectOutcome> eject(String path) async {
+    final outcome = await _channel.eject(path);
+    if (outcome is EjectSucceeded) await closeCard();
+    return outcome;
+  }
+
+  Future<void> dispose() async {
+    await closeCard();
+    await _lost.close();
+  }
+}
