@@ -80,19 +80,46 @@ class CardSelectionNotifier extends Notifier<CardSelection> {
         state = CardSelectionRejected(check);
         return;
       }
-      final path = switch (check) {
-        CardAccepted(:final dcimPath) => _parentOf(dcimPath),
-        CardEmpty(:final dcimPath) => _parentOf(dcimPath),
-        _ => '',
-      };
-      state = CardSelectionOpened(path, check);
+      state = CardSelectionOpened(_rootOf(check), check);
     } catch (_) {
       state = const CardSelectionIdle();
       rethrow;
     }
   }
 
+  /// Re-opens last session's card, if it is still in the reader.
+  ///
+  /// The bookmark minted when the user chose it is the whole point of a
+  /// security-scoped bookmark: the grant survives the relaunch, so a
+  /// photographer who is still working on the same card does not have to answer
+  /// the same panel every morning. Nothing is written and nothing is scanned
+  /// that would not have been scanned anyway.
+  ///
+  /// Silent when it cannot. A card that is not there is the ordinary case and
+  /// the picker is already the answer to it; so is a bookmark that no longer
+  /// resolves, which is what a reformatted card looks like from here. Failing
+  /// loudly at launch over either would be shouting about the normal state of
+  /// the world.
+  Future<void> reopenLast() async {
+    if (state is! CardSelectionIdle) return;
+    state = const CardSelectionBusy();
+    try {
+      final check = await _service.reopenLastCard();
+      state = check == null || check is CardMissingDcim
+          ? const CardSelectionIdle()
+          : CardSelectionOpened(_rootOf(check), check);
+    } on Object {
+      state = const CardSelectionIdle();
+    }
+  }
+
   void reset() => state = const CardSelectionIdle();
+
+  static String _rootOf(CardCheck check) => switch (check) {
+        CardAccepted(:final dcimPath) => _parentOf(dcimPath),
+        CardEmpty(:final dcimPath) => _parentOf(dcimPath),
+        _ => '',
+      };
 
   static String _parentOf(String dcimPath) {
     final index = dcimPath.lastIndexOf('/DCIM');

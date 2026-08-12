@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/catalog/photo_entity.dart';
 import '../features/grid/grid_screen.dart';
+import '../features/trash/trash_providers.dart';
 import '../features/volume_select/card_selection.dart';
 import '../features/viewer/viewer_screen.dart' show viewerOpenProvider;
 import '../features/volume_select/volume_screen.dart' show formatBytes;
@@ -18,6 +19,7 @@ class StatusBar extends StatelessWidget {
     required this.photoCount,
     this.markedCount = 0,
     this.markedBytes = 0,
+    this.marksAreDurable = true,
     this.cardFreeBytes,
     this.cardName,
     this.hints,
@@ -33,6 +35,14 @@ class StatusBar extends StatelessWidget {
   /// between marking twelve JPEGs and marking twelve RAW+JPG pairs.
   final int markedCount;
   final int markedBytes;
+
+  /// Whether those marks are reaching the disk.
+  ///
+  /// False is rare and worth a line of the strip: the decisions still stand for
+  /// this session, but they will not be there after a relaunch, and a
+  /// photographer three hundred frames into a pass should learn that now rather
+  /// than by starting again.
+  final bool marksAreDurable;
 
   /// Null when the file system reported no capacity, which is normal for some
   /// mounts and is distinct from a card with no room left.
@@ -66,6 +76,12 @@ class StatusBar extends StatelessWidget {
               child: Text(
                 '$markedCount à supprimer · ${formatBytes(markedBytes)}',
               ),
+            ),
+          if (!marksAreDurable)
+            _Field(
+              key: const Key('status-marks-volatile'),
+              tone: ObscuraColors.leicaRed,
+              child: const Text('marques non enregistrées'),
             ),
           if (cardFreeBytes != null)
             _Field(
@@ -129,15 +145,23 @@ class LibraryStatusBar extends ConsumerWidget {
         ? null
         : volumes.where((v) => v.path == cardPath).firstOrNull;
 
+    // Counted over the open card rather than off [Marks.length]. Marks are
+    // durable and the set spans every card this Mac has ever culled, so a fresh
+    // card would otherwise report a dozen photographs waiting to be deleted and
+    // no bytes to reclaim from them.
+    var markedCount = 0;
     var markedBytes = 0;
     for (final photo in photos) {
-      if (marked.contains(photo.key.value)) markedBytes += photo.totalBytes;
+      if (!marked.contains(photo.key.value)) continue;
+      markedCount++;
+      markedBytes += photo.totalBytes;
     }
 
     return StatusBar(
       photoCount: photos.length,
-      markedCount: marked.length,
+      markedCount: markedCount,
       markedBytes: markedBytes,
+      marksAreDurable: marked.durable,
       // Where the user is decides which map applies: Enter opens from the grid
       // and returns from the viewer, and stating the wrong one is worse than
       // stating none.

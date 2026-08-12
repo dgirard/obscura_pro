@@ -155,6 +155,57 @@ void main() {
       expect(service.cardSurvivesRelaunch, isTrue);
     });
 
+    test('reopening takes the scope before it looks at the card', () async {
+      final card = await makeCardTree();
+      addTearDown(() => card.delete(recursive: true));
+      final chosen = serviceFor(picks: card.path);
+      await chosen.chooseCard();
+      await chosen.dispose();
+      bridge.calls.clear();
+
+      final service = serviceFor();
+      addTearDown(service.dispose);
+      final check = await service.reopenLastCard();
+
+      expect(check, isA<CardAccepted>());
+      expect(service.openCardPath, card.path);
+      // The order that makes this work on a signed build. A bookmark resolves
+      // to a URL and grants nothing; listing DCIM before the scope is taken is
+      // the call the sandbox refuses, and its refusal is indistinguishable from
+      // an absent card — so the app would fall back to the panel every launch
+      // and the whole feature would look like it had never been wired.
+      expect(bridge.calls.indexWhere((c) => c.startsWith('decode:')),
+          lessThan(bridge.calls.indexWhere((c) => c.startsWith('start:'))));
+      expect(service.cardSurvivesRelaunch, isTrue);
+    });
+
+    test('reopening gives the scope back when the card is not there', () async {
+      final card = await makeCardTree();
+      final chosen = serviceFor(picks: card.path);
+      await chosen.chooseCard();
+      await chosen.dispose();
+      await card.delete(recursive: true);
+      bridge.calls.clear();
+
+      final service = serviceFor();
+      addTearDown(service.dispose);
+
+      expect(await service.reopenLastCard(), isNull);
+      expect(service.openCardPath, isNull);
+      // Apple is explicit that an unbalanced start leaks kernel resources, and
+      // the launch-time reopen of an absent card is the one that would run on
+      // every launch for the rest of the card's life.
+      expect(bridge.started, bridge.stopped);
+    });
+
+    test('reopening reports nothing when no card was ever chosen', () async {
+      final service = serviceFor();
+      addTearDown(service.dispose);
+
+      expect(await service.reopenLastCard(), isNull);
+      expect(bridge.started, 0);
+    });
+
     test('opens the card even when the scope cannot be taken', () async {
       final card = await makeCardTree();
       addTearDown(() => card.delete(recursive: true));

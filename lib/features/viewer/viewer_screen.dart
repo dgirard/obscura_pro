@@ -13,6 +13,7 @@ import '../grid/grid_screen.dart';
 import '../grid/photo_cell.dart';
 import '../grid/thumbnail_provider.dart';
 import '../crop/crop_screen.dart';
+import '../trash/trash_providers.dart';
 import 'exif_overlay.dart';
 import 'obscura.dart';
 
@@ -183,7 +184,11 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
   void _close() => ref.read(viewerOpenProvider.notifier).close();
 
   void _toggleMark() {
-    ref.read(markedForDeletionProvider.notifier).toggle(_photo.key.value);
+    ref.read(markedForDeletionProvider.notifier).toggle(_photo).then((report) {
+      final detail = report?.detail;
+      if (detail == null || !mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(detail)));
+    });
   }
 
   @override

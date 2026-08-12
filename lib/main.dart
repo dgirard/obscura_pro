@@ -27,11 +27,30 @@ class ObscuraProApp extends StatelessWidget {
 }
 
 /// The window: the volume picker until a card is open, the grid afterwards.
-class _Session extends ConsumerWidget {
+class _Session extends ConsumerStatefulWidget {
   const _Session();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_Session> createState() => _SessionState();
+}
+
+class _SessionState extends ConsumerState<_Session> {
+  @override
+  void initState() {
+    super.initState();
+    // Last session's card, before the picker is offered. The bookmark was taken
+    // when the user chose it precisely so this could happen; asking again for a
+    // card that never left the reader is a panel with no question in it.
+    //
+    // Deferred by one turn because it moves provider state, which a widget is
+    // not allowed to do while it is being built.
+    Future.microtask(() {
+      if (mounted) ref.read(cardSelectionProvider.notifier).reopenLast();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final open = ref.watch(cardSelectionProvider) is CardSelectionOpened;
 
     return AppShell(

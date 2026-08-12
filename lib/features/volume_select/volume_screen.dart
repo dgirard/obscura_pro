@@ -71,7 +71,14 @@ class VolumeScreen extends ConsumerWidget {
                 child: Text(
                   // The picker is not optional chrome: the sandbox grants access
                   // to the volume only through the user's own selection.
-                  'macOS demande votre accord une fois par carte.',
+                  //
+                  // "Once per card" is only true because the bookmark is kept
+                  // and reopened at launch, and the wait for that is worth
+                  // naming rather than showing as a dead button.
+                  selection is CardSelectionBusy
+                      ? 'Réouverture de la dernière carte…'
+                      : 'macOS demande votre accord une fois par carte.',
+                  key: const Key('picker-hint'),
                   style: ObscuraTypography.bodySmall
                       .copyWith(color: ObscuraColors.textSecondary),
                 ),

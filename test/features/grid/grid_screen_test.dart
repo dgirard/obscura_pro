@@ -11,6 +11,8 @@ import 'package:obscura_pro/features/catalog/stable_key.dart';
 import 'package:obscura_pro/features/grid/grid_screen.dart';
 import 'package:obscura_pro/features/grid/photo_cell.dart';
 import 'package:obscura_pro/features/grid/thumbnail_provider.dart';
+import 'package:obscura_pro/features/trash/mark_store.dart';
+import 'package:obscura_pro/features/trash/trash_providers.dart';
 import 'package:obscura_pro/infra/preview/preview_extractor.dart';
 
 import '../../infra/preview/tiff_fixture.dart';
@@ -183,6 +185,39 @@ void main() {
       expect(find.byKey(const Key('marked-100LEICA/L1000002')), findsNothing);
     });
 
+    testWidgets('the decision is written down at the moment it is made',
+        (tester) async {
+      final store = InMemoryMarkStore();
+      await _pump(tester, photos, markStore: store);
+
+      await _press(tester, LogicalKeyboardKey.backspace);
+      await tester.pump();
+
+      // Not at Empty Trash, not on quit: now. Everything between the keystroke
+      // and the write is a window in which nine hundred decisions are only in
+      // memory.
+      expect(store.calls, ['mark:${photos.first.key.value}']);
+
+      await _press(tester, LogicalKeyboardKey.backspace);
+      await tester.pump();
+
+      expect(store.calls.last, 'unmark:${photos.first.key.value}');
+    });
+
+    testWidgets('decisions made in an earlier session come back', (tester) async {
+      await _pump(
+        tester,
+        photos,
+        markStore: InMemoryMarkStore(initial: {photos[1].key.value}),
+      );
+      await tester.pump();
+
+      // The point of writing them down. A culling pass interrupted at frame 300
+      // resumes at frame 300 rather than at frame 1.
+      expect(find.byKey(const Key('marked-100LEICA/L1000002')), findsOneWidget);
+      expect(find.byKey(const Key('marked-100LEICA/L1000001')), findsNothing);
+    });
+
     testWidgets('a photograph with no readable preview gets an error tile',
         (tester) async {
       await _pump(tester, photos);
@@ -315,6 +350,7 @@ Future<void> _pump(
   void Function(PhotoEntity photo)? onOpen,
   Map<String, int> placeholders = const {},
   Future<GridThumbnail> Function(PhotoEntity photo)? thumbnail,
+  MarkStore? markStore,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -323,6 +359,11 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        // A widget test has no application-support directory to open a database
+        // in, so the durable store is stood in for by one that records.
+        markStoreProvider.overrideWith(
+          (ref) async => markStore ?? InMemoryMarkStore(),
+        ),
         placeholderColorsProvider.overrideWith((ref) async => placeholders),
         gridThumbnailProvider.overrideWith(
           (ref, request) => (thumbnail ?? _instant)(request.photo),

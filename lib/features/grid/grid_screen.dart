@@ -15,8 +15,10 @@ import '../../infra/safety/io_errors.dart';
 import '../../infra/safety/parasite_guard.dart';
 import '../settings/settings_screen.dart';
 import '../settings/settings_store.dart';
+import '../trash/trash_providers.dart';
 import '../trash/trash_screen.dart';
 import '../viewer/viewer_screen.dart';
+import 'card_open_banner.dart';
 import 'photo_cell.dart';
 import 'thumbnail_provider.dart';
 
@@ -105,32 +107,6 @@ class GridCursorNotifier extends Notifier<int> {
 
 final gridCursorProvider =
     NotifierProvider<GridCursorNotifier, int>(GridCursorNotifier.new);
-
-/// Photographs marked for deletion, by stable key.
-///
-/// In memory for now, and deliberately so: nothing about marking touches the
-/// card, and the durable trash — with its own table, its undo and its atomic
-/// empty pass — belongs to the deletion unit. What the grid needs today is
-/// somewhere to put the fact so it can draw it.
-class MarkedForDeletionNotifier extends Notifier<Set<String>> {
-  @override
-  Set<String> build() => const {};
-
-  void toggle(String stableKey) {
-    final next = {...state};
-    if (!next.remove(stableKey)) next.add(stableKey);
-    state = next;
-  }
-
-  /// Takes every mark back off. What "Restore All" does when nothing has been
-  /// deleted yet, which is the ordinary case: marking touched no file.
-  void clear() => state = const {};
-}
-
-final markedForDeletionProvider =
-    NotifierProvider<MarkedForDeletionNotifier, Set<String>>(
-  MarkedForDeletionNotifier.new,
-);
 
 /// A keyboard move within the grid.
 enum GridMove { previous, next, previousRow, nextRow }
@@ -256,8 +232,21 @@ class _LibraryGridState extends ConsumerState<LibraryGrid> {
   void _toggleMark() {
     final photos = widget.photos;
     if (photos.isEmpty) return;
-    final photo = photos[ref.read(gridCursorProvider).clamp(0, photos.length - 1)];
-    ref.read(markedForDeletionProvider.notifier).toggle(photo.key.value);
+    _mark(photos[ref.read(gridCursorProvider).clamp(0, photos.length - 1)]);
+  }
+
+  /// Records the decision and reports it only when it did not go as the
+  /// deletion mode promised.
+  ///
+  /// Deferred marking says nothing, because a snack bar per keystroke through a
+  /// nine-hundred-frame pass is noise. A refused card write is the one thing
+  /// the user cannot see from the badge.
+  void _mark(PhotoEntity photo) {
+    ref.read(markedForDeletionProvider.notifier).toggle(photo).then((report) {
+      final detail = report?.detail;
+      if (detail == null || !mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(detail)));
+    });
   }
 
   @override
@@ -341,9 +330,7 @@ class _LibraryGridState extends ConsumerState<LibraryGrid> {
                       placeholderColor: placeholders[photo.key.value],
                       onToggleMark: () {
                         ref.read(gridCursorProvider.notifier).moveTo(i);
-                        ref
-                            .read(markedForDeletionProvider.notifier)
-                            .toggle(photo.key.value);
+                        _mark(photo);
                         _focus.requestFocus();
                       },
                     ),
@@ -355,6 +342,23 @@ class _LibraryGridState extends ConsumerState<LibraryGrid> {
         ),
       ),
     );
+  }
+}
+
+/// What the card open found, once it has finished finding it.
+///
+/// Nothing while the scan runs: the report is not what the user came for, and
+/// making the grid wait on it would put a spinner in front of their photographs
+/// to say the card is fine.
+class _CardOpenSlot extends ConsumerWidget {
+  const _CardOpenSlot();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final report = ref.watch(cardOpenProvider).value;
+    return report == null
+        ? const SizedBox.shrink()
+        : CardOpenBanner(report: report);
   }
 }
 
@@ -407,10 +411,20 @@ class LibraryScreen extends ConsumerWidget {
           ),
           data: (catalog) => ref.watch(viewerOpenProvider)
               ? ViewerScreen(photos: catalog.photos)
-              : LibraryGrid(
-                  photos: catalog.photos,
-                  onOpen: onOpen ??
-                      (_) => ref.read(viewerOpenProvider.notifier).open(),
+              : Column(
+                  children: [
+                    // Above the grid rather than over it: what the card open
+                    // found is context for the photographs, not an interruption
+                    // of them, and a modal would be dismissed unread.
+                    const _CardOpenSlot(),
+                    Expanded(
+                      child: LibraryGrid(
+                        photos: catalog.photos,
+                        onOpen: onOpen ??
+                            (_) => ref.read(viewerOpenProvider.notifier).open(),
+                      ),
+                    ),
+                  ],
                 ),
         );
   }

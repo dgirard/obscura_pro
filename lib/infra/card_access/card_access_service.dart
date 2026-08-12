@@ -114,15 +114,34 @@ class CardAccessService {
   }
 
   /// Re-opens the card remembered from a previous session, if it is back.
+  ///
+  /// The scope is taken *before* the card is looked at, which is the reverse of
+  /// [chooseCard] and has to be. There the open panel has already granted this
+  /// process access, so the inspection is free; here the grant exists only
+  /// inside the bookmark, and resolving one yields a URL and no access at all.
+  /// Listing `DCIM/` first is the call the sandbox refuses — and its refusal is
+  /// indistinguishable from a card that is not in the reader, so the app would
+  /// have quietly fallen back to the panel every launch and looked like a
+  /// feature that was never wired.
+  ///
+  /// Returns null when there is nothing to reopen, which covers all the
+  /// ordinary cases: no card was ever chosen, the bookmark is stale, or the
+  /// card is not there. The grant is given back in every one of them.
   Future<CardCheck?> reopenLastCard() async {
     final resolution = await _bookmarks.resolve(lastCardKey);
     if (resolution is! BookmarkResolved) return null;
 
-    final check = await inspect(resolution.path);
-    if (check is CardMissingDcim) return check;
-
     await _hold(resolution.path);
-    return check;
+    try {
+      final check = await inspect(resolution.path);
+      if (check is! CardMissingDcim) return check;
+    } on Object {
+      // A path that cannot be read is not a card that can be reopened, and at
+      // launch there is nobody to tell about it who is not better served by the
+      // picker.
+    }
+    await closeCard();
+    return null;
   }
 
   Future<void> forgetLastCard() => _bookmarks.forget(lastCardKey);

@@ -11,6 +11,8 @@ import 'package:obscura_pro/features/catalog/stable_key.dart';
 import 'package:obscura_pro/features/grid/grid_screen.dart';
 import 'package:obscura_pro/features/grid/photo_cell.dart';
 import 'package:obscura_pro/features/grid/thumbnail_provider.dart';
+import 'package:obscura_pro/features/trash/mark_store.dart';
+import 'package:obscura_pro/features/trash/trash_providers.dart';
 import 'package:obscura_pro/features/viewer/exif_overlay.dart';
 import 'package:obscura_pro/features/viewer/obscura.dart';
 import 'package:obscura_pro/features/viewer/viewer_screen.dart';
@@ -175,7 +177,7 @@ void main() {
 
       await _press(tester, LogicalKeyboardKey.backspace);
 
-      expect(container.read(markedForDeletionProvider), hasLength(1));
+      expect(container.read(markedForDeletionProvider).length, 1);
       expect(find.byKey(const Key('viewer-marked')), findsOneWidget);
     });
 
@@ -193,7 +195,7 @@ void main() {
       await tester.tap(button);
       await tester.pump();
 
-      expect(container.read(markedForDeletionProvider), hasLength(1));
+      expect(container.read(markedForDeletionProvider).length, 1);
       expect(find.byKey(const Key('viewer-marked')), findsOneWidget);
       expect(
         find.byWidgetPredicate(
@@ -332,6 +334,10 @@ Future<ProviderContainer> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        // No application-support directory in a widget test, so the durable
+        // store is stood in for. The write-through itself is checked where the
+        // store is, not through the viewer.
+        markStoreProvider.overrideWith((ref) async => InMemoryMarkStore()),
         gridThumbnailProvider.overrideWith(
           (ref, request) async => GridThumbnail(
             jpeg: _pixel,

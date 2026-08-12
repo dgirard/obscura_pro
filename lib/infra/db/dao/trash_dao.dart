@@ -103,6 +103,23 @@ class TrashDao extends DatabaseAccessor<AppDatabase> with _$TrashDaoMixin {
             ])))
       .get();
 
+  /// Stable keys of every photograph currently marked.
+  ///
+  /// Joined rather than looked up a row at a time: this is what a relaunch
+  /// reads to restore a session's decisions, and a photographer who marked four
+  /// hundred frames should not pay four hundred queries before the grid draws.
+  ///
+  /// A RAW+JPG pair contributes two rows and one key, which is the right count:
+  /// the mark belongs to the photograph, not to its files.
+  Future<Set<String>> markedStableKeys() async {
+    final query = select(trashItems).join([
+      innerJoin(photos, photos.id.equalsExp(trashItems.photoId)),
+    ])
+      ..where(trashItems.state.equalsValue(TrashState.marked));
+    final rows = await query.get();
+    return {for (final row in rows) row.readTable(photos).cleStable};
+  }
+
   /// Photo ids the grid must badge as marked. Reactive: the badge has to clear
   /// the instant the mark is undone, without the grid asking again.
   Stream<Set<int>> watchMarkedPhotoIds() {

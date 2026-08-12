@@ -49,6 +49,11 @@ several need a card whose contents are expendable.
   numbering intact. This is the gate the plan sets for Phase A being real.
 - **U11 — AE4.** Partly done: an exported file was checked and carries the right
   model, date and ISO. Still to do on a real card end to end.
+- **The launch-time reopen, on a signed build.** The order — scope first, then
+  look at the card — is what makes it work under the sandbox, and no test can
+  prove that: `RecordingBridge` grants everything it is asked for. Quit with a
+  card open, relaunch, and the grid should come back with no panel and with last
+  session's marks on it.
 
 ---
 
@@ -56,30 +61,20 @@ several need a card whose contents are expendable.
 
 Ordered by how much they would cost a user.
 
-### The card-open report is computed and never shown
-`cardOpenProvider` returns debris removed, foreign parasites found, whether the
-card is writable, how many interrupted operations were reconciled, and any
-unresolved losses. Nothing reads it. Every one of those is something a
-photographer is entitled to see, and the loss list especially: it is the single
-case the app admits it cannot repair.
-
 ### Orientation is applied by two copies of the same switch
 `isolate_pool.dart` and `export_service.dart` each carry their own
 `_applyOrientation` over the eight EXIF cases. They run in different isolates
 and neither can import the other's private helper today, but the rule is one
 rule and it is written twice.
 
-### Marking does not survive a relaunch
-The grid and viewer record marks in memory (`markedForDeletionProvider`), and
-`TrashService` writes them to the database only when Empty Trash runs. Close the
-app halfway through culling 900 frames and the decisions are gone. The trash
-table and its state machine are built and tested; nothing has been wired to
-write a mark at the moment it is made.
-
-### The card must be picked again every launch
-`CardAccessService.reopenLastCard` exists, is tested, and is never called.
-Security-scoped bookmarks are minted on every open, so the machinery to reopen
-last session's card without the panel is present and unused.
+### A per-photo undo in immediate mode
+Immediate mode moves the originals to the Mac as each decision is made, and
+`TrashService.restoreToCard` puts them back — but it restores *everything* in
+`movedToMacTrash`, in one pass, because that is the shape reconciliation needed.
+There is no "put this one back", so pressing Delete on the wrong frame in
+immediate mode has no single-keystroke undo. The trash screen also does not yet
+list what is sitting on the Mac, so restoring is not reachable from the
+interface at all. Deferred mode — the default — is unaffected.
 
 ### A JPG-only card gets soft thumbnails
 A Q3 JPEG's only embedded preview is the 160 × 120 EXIF thumbnail, and its only
@@ -108,6 +103,44 @@ undecided rather than decided.
 ---
 
 ## Decided
+
+### A mark is written at the moment it is made — 2026-08-12
+Marks lived in `markedForDeletionProvider`, in memory, and reached the trash
+table only when Empty Trash ran; quitting halfway through 900 frames threw away
+every decision. They are now written through as they are made, and read back at
+launch.
+
+Kept in memory *and* written through, rather than driven off a database stream:
+culling is a keyboard activity and the badge has to arrive on the keystroke, not
+on the write. That means the two can disagree, so `Marks` carries `durable`
+alongside the keys — a write that fails does not take the decision back, it
+takes back the promise that the decision will still be there tomorrow, and the
+status bar and the trash screen say so. The alternative, a silent in-memory
+fallback, is the one thing a tool making this promise cannot do.
+
+Immediate mode is wired with it, because a settings screen offering a mode the
+grid ignores is the same class of lie. Marking in immediate mode writes the row
+first and moves the originals second: a crash between the two leaves a mark,
+which is the survivable half. A refused card write leaves the frame on the card,
+still marked, and says which — never "deleted".
+
+### The card is reopened without the panel — 2026-08-12
+`reopenLastCard` had been written and tested and was called by nothing, so every
+launch asked for a card that had not left the reader. It is now called at
+startup — and its order had to be corrected first. It inspected the card and
+*then* took the security scope, which works in a test and cannot work on a
+signed build: resolving a bookmark yields a URL and no access, so listing
+`DCIM/` first is the call the sandbox refuses, and that refusal looks exactly
+like an absent card. The feature would have shipped, fallen back to the panel
+every time, and looked like it had never been wired.
+
+### The card-open report is shown — 2026-08-12
+Debris removed, foreign parasites, whether the card is writable, interrupted
+operations reconciled, unresolved losses: all computed on every card open, all
+read by nothing. Now a strip above the grid, worst line first and its colour
+taken from that line — a loss shown in the same grey as a housekeeping note is a
+loss nobody reads. Dismissible, and keyed by the report's own contents so that
+putting one card's findings away does not silence the next card's.
 
 ### The straightened frame is the canvas of record — 2026-08-12
 `CropRect.rect` was already documented as living in the normalized space of the
@@ -139,9 +172,9 @@ Export folder, deletion mode, and the Spotlight tradeoff. Each is stated with
 its cost on both sides rather than presented as a switch with a good side and a
 bad one. Stored as JSON beside the bookmarks, readable in a text editor.
 
-Still unexposed there: nothing, for now. `TrashService`'s immediate mode is
-selectable but the grid does not yet act on the choice — the same wiring gap as
-persistent marking, and it should be closed with it.
+Still unexposed there: nothing. Immediate mode was wired on 2026-08-12 with
+persistent marking, as this note said it should be; what it still lacks is a
+per-photo undo, which is above under gaps.
 
 ## Undecided, and waiting on you
 

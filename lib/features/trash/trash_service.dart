@@ -123,15 +123,12 @@ class TrashService {
     }
   }
 
-  Future<Set<String>> markedKeys() async {
-    final marked = await _trash.itemsInState(TrashState.marked);
-    final keys = <String>{};
-    for (final item in marked) {
-      final photo = await _catalog.photoById(item.photoId);
-      if (photo != null) keys.add(photo.cleStable);
-    }
-    return keys;
-  }
+  /// Every mark still standing, by stable key.
+  ///
+  /// This is what a relaunch reads: the decisions of an interrupted culling
+  /// session, restored to the grid without the card having been touched by any
+  /// of them.
+  Future<Set<String>> markedKeys() => _trash.markedStableKeys();
 
   Stream<TrashSummary> watchSummary() => _trash.watchTrashSummary();
 

@@ -3,21 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme.dart';
 import '../../infra/db/database.dart';
-import '../../infra/db/database_provider.dart';
 import '../catalog/photo_entity.dart';
 import '../grid/grid_screen.dart';
 import '../volume_select/card_selection.dart';
 import '../volume_select/volume_screen.dart' show formatBytes;
-import 'trash_service.dart';
-
-final trashServiceProvider =
-    FutureProvider<TrashService>((ref) => TrashService.open(ref.watch(appDatabaseProvider)));
-
-/// What is waiting on a decision, live.
-final trashSummaryProvider = StreamProvider<TrashSummary>((ref) async* {
-  final service = await ref.watch(trashServiceProvider.future);
-  yield* service.watchSummary();
-});
+import 'trash_providers.dart';
 
 /// The trash, and the one irreversible button in the application.
 class TrashScreen extends ConsumerWidget {
@@ -40,7 +30,7 @@ class TrashScreen extends ConsumerWidget {
           Text('Corbeille', style: ObscuraTypography.headlineLarge),
           const SizedBox(height: ObscuraSpacing.controlGap),
           Text(
-            summary.fileCount == 0
+            doomed.isEmpty
                 ? 'Rien n\'est marqué. Les photographies restent sur la carte '
                     'jusqu\'à ce que vous vidiez la corbeille.'
                 : 'Marquer n\'écrit rien sur la carte. Rien n\'est supprimé '
@@ -48,26 +38,59 @@ class TrashScreen extends ConsumerWidget {
             style: ObscuraTypography.bodyMedium
                 .copyWith(color: ObscuraColors.textSecondary),
           ),
+          if (!marked.durable) ...[
+            const SizedBox(height: ObscuraSpacing.controlGap),
+            Text(
+              // The one thing this screen must not do is imply a decision is
+              // safe when it is only remembered.
+              'Les marques de cette session ne sont pas enregistrées et '
+              'disparaîtront à la fermeture : ${marked.failure}',
+              key: const Key('trash-not-durable'),
+              style: ObscuraTypography.bodySmall
+                  .copyWith(color: ObscuraColors.leicaRed),
+            ),
+          ],
           const SizedBox(height: ObscuraSpacing.overlayPadding * 2),
           Row(
             children: [
+              // Counted over the open card, because that is what the button at
+              // the bottom of this screen will act on. Marks are durable now
+              // and the table spans every card this Mac has culled, so the
+              // summary's own totals would promise a deletion that the
+              // confirmation dialog then contradicts.
               _Counter(
                 key: const Key('trash-photo-count'),
                 label: 'Photographies',
-                value: '${summary.photoCount}',
+                value: '${doomed.length}',
               ),
               _Counter(
                 key: const Key('trash-file-count'),
                 label: 'Fichiers',
-                value: '${summary.fileCount}',
+                value: '${doomed.fold<int>(0, (n, p) => n + p.files.length)}',
               ),
               _Counter(
                 key: const Key('trash-bytes'),
                 label: 'À récupérer',
-                value: formatBytes(summary.pendingBytes),
+                value: formatBytes(
+                  doomed.fold<int>(0, (n, p) => n + p.totalBytes),
+                ),
               ),
             ],
           ),
+          if (summary.photoCount > doomed.length)
+            Padding(
+              padding: const EdgeInsets.only(top: ObscuraSpacing.controlGap),
+              child: Text(
+                // Rows this card cannot account for: marks made on another
+                // card, and originals rescued to the Mac in immediate mode.
+                // Nothing on this screen can act on them, which is a reason to
+                // say where they are rather than a reason to hide them.
+                _elsewhere(summary.photoCount - doomed.length),
+                key: const Key('trash-elsewhere'),
+                style: ObscuraTypography.bodySmall
+                    .copyWith(color: ObscuraColors.textSecondary),
+              ),
+            ),
           const SizedBox(height: ObscuraSpacing.overlayPadding * 2),
           Expanded(
             child: doomed.isEmpty
@@ -81,7 +104,9 @@ class TrashScreen extends ConsumerWidget {
                 key: const Key('trash-restore-all'),
                 onPressed: doomed.isEmpty
                     ? null
-                    : () => ref.read(markedForDeletionProvider.notifier).clear(),
+                    : () => ref
+                        .read(markedForDeletionProvider.notifier)
+                        .unmark(doomed),
                 icon: const Icon(Icons.undo, size: 16),
                 label: const Text('Tout restaurer'),
               ),
@@ -188,12 +213,21 @@ class TrashScreen extends ConsumerWidget {
     if (confirmed != true) return;
 
     final service = await ref.read(trashServiceProvider.future);
+    // Re-asserted rather than assumed. Marking normally writes these rows at
+    // the moment the decision is made, but a session whose writes were failing
+    // has marks that exist only in memory, and emptying a trash the database
+    // has never heard of would delete nothing while reporting success.
     for (final photo in photos) {
       await service.mark(photo);
     }
     final report = await service.emptyTrash(photos);
 
-    ref.read(markedForDeletionProvider.notifier).clear();
+    // Forgotten, not unmarked: every row involved is now `deleted` or
+    // `uncertain`, and writing `onCard` over them would undo the record of what
+    // just happened.
+    ref
+        .read(markedForDeletionProvider.notifier)
+        .forget(photos.map((p) => p.key.value));
     ref.invalidate(cardCatalogProvider);
 
     if (!context.mounted) return;
@@ -210,6 +244,12 @@ class TrashScreen extends ConsumerWidget {
     );
   }
 }
+
+/// Says how much of the trash belongs to a card that is not the open one.
+String _elsewhere(int count) => count == 1
+    ? 'Une autre photographie attend une décision et n\'est pas sur cette carte.'
+    : '$count autres photographies attendent une décision et ne sont pas sur '
+        'cette carte.';
 
 class _Counter extends StatelessWidget {
   const _Counter({super.key, required this.label, required this.value});
