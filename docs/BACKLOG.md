@@ -176,15 +176,21 @@ tracing on screen was not a layer at all — it is a thirds grid drawn inside th
 crop rectangle, about the frame being chosen — and the guides actually placed on
 the photograph were simply not drawn in crop mode. They came back on leaving it.
 
-They are drawn now, inside the same box as the picture, so they turn with it
-when the horizon is corrected and flip with it under obscura. Without handles:
-this screen is for choosing a frame, and a guide that could be dragged while a
-crop is being pulled would be two tools under one pointer.
+They are drawn now — and then, on being seen, drawn somewhere else: "les calques
+ne suivent pas le recadrage". The first attempt laid them on the photograph,
+where they are stored. The right place is the rectangle: a rule of thirds is a
+statement about a picture's *edges*, and in this screen the edges being decided
+are the crop's. The guides sit on it, move with it, and take its shape when the
+ratio changes, so what is on screen is how the exported file will be composed.
 
-The crop rectangle keeps its own thirds. The two say different things — one is
-the composition of the photograph, the other is the frame about to be cut out of
-it — and losing the second to avoid explaining the first would take away the
-guide that is actually about the decision being made.
+Without handles: this screen is for choosing a frame, and a guide that could be
+dragged while a crop is being pulled would be two tools under one pointer. To
+move a guide on the photograph itself, the viewer is a keystroke away.
+
+The stored placement is untouched by any of this. A layer covering the whole
+photograph covers the whole crop; one placed on a part of the frame keeps its
+proportions inside the rectangle. The crop keeps its own thirds too — they are
+the frame's, and they are drawn whether or not a guide has been placed.
 
 ### One tile, two grids — 2026-08-12
 Asked plainly: "pourquoi ce n'est pas le même viewer de vignettes pour les

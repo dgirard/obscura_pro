@@ -85,7 +85,36 @@ void main() {
     expect(painter.showHandles, isFalse);
   });
 
-  testWidgets('the guides turn with the picture and flip with obscura',
+  testWidgets('the guides sit on the frame being cut, and follow it',
+      (tester) async {
+    final container = await _pump(tester);
+    container.read(layerBoardProvider.notifier).place('rule-of-thirds');
+    container.read(cropRectProvider.notifier).chooseRatio(CropRatio.square, 3 / 2);
+    await tester.pump();
+
+    Rect guides() => tester.getRect(find.byKey(const Key('crop-layers')));
+    final before = guides();
+
+    // Drawn over the rectangle, not over the photograph: a rule of thirds is a
+    // statement about a picture's edges, and the edges being decided here are
+    // the rectangle's.
+    expect(before.width, closeTo(before.height, 1e-6));
+
+    await _dragFrame(tester, const Offset(120, 0));
+
+    // And it goes where the rectangle goes.
+    final after = guides();
+    expect(after.left, greaterThan(before.left));
+    expect(after.width, closeTo(before.width, 0.01));
+    expect(after.height, closeTo(before.height, 0.01));
+
+    container.read(cropRectProvider.notifier).chooseRatio(CropRatio.xpan, 3 / 2);
+    await tester.pump();
+    // ...and takes its shape.
+    expect(guides().width / guides().height, closeTo(65 / 24, 0.01));
+  });
+
+  testWidgets('the guides flip with obscura',
       (tester) async {
     final container = await _pump(tester);
     container.read(obscuraProvider.notifier).toggle();

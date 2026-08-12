@@ -389,6 +389,21 @@ class _CropScreenState extends ConsumerState<CropScreen> {
                       fitted: _transformFor(crop?.angleDegrees ?? 0).fittedRect,
                     );
 
+                    // The composition, laid on the frame being cut rather than
+                    // on the photograph it is cut from. A rule of thirds is a
+                    // statement about a picture's edges, and in this screen the
+                    // edges that are being decided are the rectangle's — so the
+                    // guides move and resize with it, and what is on screen is
+                    // what the exported file will be composed like.
+                    final composition = crop == null
+                        ? const SizedBox.shrink()
+                        : _Composition(
+                            crop: crop,
+                            rect: _transformFor(crop.angleDegrees)
+                                .screenRectOf(crop.rect),
+                            obscura: obscura,
+                          );
+
                     return Listener(
                       // Where the pointer went down, which is the only place a
                       // handle can honestly be looked for. See [_pressed].
@@ -405,12 +420,16 @@ class _CropScreenState extends ConsumerState<CropScreen> {
                                 rect: _transformFor(crop.angleDegrees)
                                     .screenRectOf(crop.rect),
                                 viewport: _viewport,
-                                child: frame,
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [frame, composition],
+                                ),
                               )
                             : Stack(
                                 fit: StackFit.expand,
                                 children: [
                                   frame,
+                                  composition,
                                   if (crop != null)
                                     CustomPaint(
                                       painter: _CropOverlayPainter(
@@ -501,39 +520,13 @@ class _Frame extends ConsumerWidget {
                 child: SizedBox(
                   width: unit * frameAspect,
                   height: unit,
-                  // The guides go inside the same box as the picture, so they
-                  // turn with it when the horizon is corrected and flip with it
-                  // under obscura — and so a photographer can cut a frame
-                  // *against* the composition they laid out rather than from
-                  // memory of it.
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      OrientedImage(
-                        key: const Key('crop-image'),
-                        image: decoded,
-                        orientation: DisplayOrientation.of(
-                          photo.orientation,
-                          obscura: obscura,
-                        ),
-                      ),
-                      CustomPaint(
-                        key: const Key('crop-layers'),
-                        painter: LayerPainter(
-                          layers: ref.watch(layerBoardProvider).layers,
-                          transform: ViewTransform(
-                            imageSize: Size(frameAspect * 1000, 1000),
-                            viewport: Size(unit * frameAspect, unit),
-                            obscura: obscura,
-                          ),
-                          // No handles here: this screen is for choosing a
-                          // frame, and a guide that could be dragged while a
-                          // crop is being pulled would be two tools under one
-                          // pointer.
-                          showHandles: false,
-                        ),
-                      ),
-                    ],
+                  child: OrientedImage(
+                    key: const Key('crop-image'),
+                    image: decoded,
+                    orientation: DisplayOrientation.of(
+                      photo.orientation,
+                      obscura: obscura,
+                    ),
                   ),
                 ),
               ),
@@ -543,6 +536,61 @@ class _Frame extends ConsumerWidget {
       ),
       error: (_, _) => const SizedBox.expand(),
       loading: () => const SizedBox.expand(),
+    );
+  }
+}
+
+/// The guides, drawn on the rectangle being cut.
+///
+/// Positioned over the crop rather than over the photograph, which is the whole
+/// of what "the layers follow the crop" means: the same construction, applied to
+/// the frame the photographer is choosing. A guide placed at full size covers
+/// the rectangle exactly, and one placed on a part of the frame keeps its
+/// proportions within it.
+class _Composition extends ConsumerWidget {
+  const _Composition({
+    required this.crop,
+    required this.rect,
+    required this.obscura,
+  });
+
+  final CropRect crop;
+
+  /// Where the crop is, in the canvas's own coordinates.
+  final Rect rect;
+
+  final bool obscura;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final layers = ref.watch(layerBoardProvider).layers;
+    if (layers.isEmpty || rect.isEmpty) return const SizedBox.shrink();
+
+    return Positioned.fromRect(
+      rect: rect,
+      child: IgnorePointer(
+        child: CustomPaint(
+          key: const Key('crop-layers'),
+          painter: LayerPainter(
+            layers: layers,
+            // A viewport that *is* the crop: the transform's fitted rectangle
+            // then fills it, so normalized (0,0)..(1,1) is the rectangle's own
+            // corners rather than the photograph's.
+            transform: ViewTransform(
+              imageSize: Size(
+                crop.ratio.aspectIn(crop.orientation) * 1000,
+                1000,
+              ),
+              viewport: rect.size,
+              obscura: obscura,
+            ),
+            // No handles: this screen is for choosing a frame, and a guide that
+            // could be dragged while a crop is being pulled would be two tools
+            // under one pointer.
+            showHandles: false,
+          ),
+        ),
+      ),
     );
   }
 }
