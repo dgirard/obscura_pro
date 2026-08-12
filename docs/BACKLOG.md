@@ -151,6 +151,40 @@ same order — open, place, then let the read land — and fails without the wai
 The sixteen rows are gone; nothing could bring them back, and the honest note is
 that the app lost them.
 
+### A card that has been granted opens by itself — 2026-08-12
+Asked for: "si la carte est là lorsque l'on ouvre l'application, la visionneuse
+est directement dessus, pas besoin de l'ouvrir". Half of it already worked —
+`reopenLast` reopens last session's card from its bookmark — and the half that
+did not was the second card. The bookmark was saved under one key, `last_card`,
+so swapping between two cards meant answering the open panel every time even
+though both had been pointed at.
+
+Every card now gets a bookmark of its own, keyed by mount path, and the app
+tries them at launch after the last one and again whenever a volume appears
+while it is running. Keying by path is safe in the way that matters: a bookmark
+is bound to the volume rather than to the path, so a different card arriving at
+`/Volumes/Untitled` resolves stale rather than handing out someone else's grant.
+
+What cannot be smoothed away is the first sight of a card: under the sandbox the
+user's selection in the panel *is* the grant, and there is no way to reach a
+volume they have not pointed at. Seeing a card in the list and being allowed to
+read it are different things, and no amount of interface removes the difference.
+
+### The exports screen reads the folder — 2026-08-12
+Asked for in the same breath: "la visionneuse de l'export doit permettre de voir
+toutes les images du répertoire". It listed the `crop_export` rows, which is a
+view of the database rather than of the folder — so a file exported by an older
+build, dropped in by hand, or belonging to a row this app lost was simply not
+there.
+
+The folder is the authority on what exists now; the rows are what this app knows
+*about* what exists — which frame, which crop, how large it came out. A file
+with no row is listed with what the file itself can say: its date, its size on
+disk, and its pixel size read from the JPEG header rather than by decoding a
+twelve-megabyte file to fill in one column. It is labelled "trouvé dans le
+dossier", because the difference between a file this app made and a file it
+merely found is worth stating.
+
 ### A frame chosen in obscura is the frame that gets cut — 2026-08-12
 Reported after using it: "j'ai recadré en mode obscura, mais l'export ne prend
 pas en compte le fait que je suis dans ce mode". Exactly right, and the cause

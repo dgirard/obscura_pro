@@ -300,7 +300,8 @@ class _ExportRow extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '${record.radical}  ·  ${record.ratio}  ·  ${record.dimensions}',
+                  record.detail,
+                  key: Key('export-detail-${record.id}'),
                   style: ObscuraTypography.monoData
                       .copyWith(color: ObscuraColors.textSecondary),
                 ),

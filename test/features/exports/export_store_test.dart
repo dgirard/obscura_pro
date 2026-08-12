@@ -10,6 +10,8 @@ import 'package:obscura_pro/features/exports/export_store.dart';
 import 'package:obscura_pro/infra/db/database.dart';
 import 'package:path/path.dart' as p;
 
+import '../../infra/preview/tiff_fixture.dart';
+
 /// The traceability of an export, and what the list says about the file.
 void main() {
   late AppDatabase db;
@@ -18,8 +20,8 @@ void main() {
 
   setUp(() async {
     db = AppDatabase.forTesting(NativeDatabase.memory());
-    store = DriftExportStore(db);
     folder = await Directory.systemTemp.createTemp('obscura_exports');
+    store = DriftExportStore(db, root: () async => folder);
   });
 
   tearDown(() async {
@@ -148,18 +150,87 @@ void main() {
     });
   });
 
+  group('the folder, not only the rows', () {
+    test('lists a file this app never recorded', () async {
+      // Dropped in by hand, exported by an older build, or left by a row this
+      // app lost: it is in the export folder, so it is an export.
+      final loose = File(p.join(folder.path, 'from-elsewhere.jpg'));
+      await loose.writeAsBytes(realJpeg(width: 640, height: 480));
+
+      final entry = (await store.all()).single;
+      expect(entry.path, loose.path);
+      expect(entry.untracked, isTrue);
+      // What the file itself can say: its size, read from the header rather
+      // than by decoding it.
+      expect(entry.dimensions, '640 × 480 px');
+      expect(entry.detail, contains('trouvé dans le dossier'));
+      expect(entry.missing, isFalse);
+    });
+
+    test('walks the dated session folders', () async {
+      final session = Directory(p.join(folder.path, '2026-08-01'));
+      await session.create();
+      await File(p.join(session.path, 'a.jpg'))
+          .writeAsBytes(realJpeg(width: 100, height: 100));
+
+      expect((await store.all()).single.folder, '2026-08-01');
+    });
+
+    test('does not list a recorded export twice', () async {
+      await writeFile('L1000001_3x2_01.jpg');
+      await record('L1000001_3x2_01.jpg');
+
+      final all = await store.all();
+      expect(all, hasLength(1));
+      expect(all.single.untracked, isFalse);
+      expect(all.single.radical, '100LEICA/L1000001');
+    });
+
+    test('ignores what is not a photograph', () async {
+      await File(p.join(folder.path, 'notes.txt')).writeAsString('x');
+      await File(p.join(folder.path, '.DS_Store')).writeAsString('x');
+      await File(p.join(folder.path, 'half-written.jpg.part')).writeAsString('x');
+
+      expect(await store.all(), isEmpty);
+    });
+
+    test('an export folder that does not exist yet is not an error', () async {
+      final gone = DriftExportStore(
+        db,
+        root: () async => Directory(p.join(folder.path, 'nope')),
+      );
+      expect(await gone.all(), isEmpty);
+    });
+
+    test('forgetting an untracked file touches no row', () async {
+      await writeFile('recorded.jpg');
+      await record('recorded.jpg');
+      await File(p.join(folder.path, 'loose.jpg'))
+          .writeAsBytes(realJpeg(width: 10, height: 10));
+
+      final loose = (await store.all()).firstWhere((e) => e.untracked);
+      await store.forget(loose.id);
+
+      expect((await store.all()).where((e) => !e.untracked), hasLength(1));
+    });
+  });
+
   test('forgetting a row leaves the file alone', () async {
     final file = await writeFile('kept.jpg');
     await record('kept.jpg');
 
     await store.forget((await store.all()).single.id);
 
-    expect(await store.all(), isEmpty);
     // The row is the app's record; the file is the user's. Dropping one must
     // never take the other with it -- the screen moves the file to the Mac's
     // Trash first and then drops the row, and this is the half that must not
     // do it for it.
     expect(await file.exists(), isTrue);
+    // And the file goes on being listed, because it is still in the folder:
+    // what was forgotten is where it came from, not that it is there.
+    final left = (await store.all()).single;
+    expect(left.untracked, isTrue);
+    expect(left.path, file.path);
   });
 }
 

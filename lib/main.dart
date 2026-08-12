@@ -5,6 +5,7 @@ import 'app/app_shell.dart';
 import 'app/status_bar.dart';
 import 'app/theme.dart';
 import 'features/grid/grid_screen.dart';
+import 'infra/card_access/models.dart';
 import 'features/volume_select/card_selection.dart';
 import 'features/volume_select/volume_screen.dart';
 
@@ -44,13 +45,27 @@ class _SessionState extends ConsumerState<_Session> {
     //
     // Deferred by one turn because it moves provider state, which a widget is
     // not allowed to do while it is being built.
-    Future.microtask(() {
-      if (mounted) ref.read(cardSelectionProvider.notifier).reopenLast();
+    Future.microtask(() async {
+      if (!mounted) return;
+      final selection = ref.read(cardSelectionProvider.notifier);
+      await selection.reopenLast();
+      // Then any other card that is in the reader and has been granted before:
+      // a photographer with two cards should not have to answer a panel for the
+      // one that was not last in.
+      if (mounted) await selection.openKnown();
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    // A card put in while the app is running opens itself, on the same terms:
+    // only if this Mac has been given access to it before.
+    ref.listen(volumeEventsProvider, (previous, next) {
+      if (next.value?.kind != VolumeEventKind.mounted) return;
+      if (ref.read(cardSelectionProvider) is! CardSelectionIdle) return;
+      ref.read(cardSelectionProvider.notifier).openKnown();
+    });
+
     final open = ref.watch(cardSelectionProvider) is CardSelectionOpened;
 
     return AppShell(

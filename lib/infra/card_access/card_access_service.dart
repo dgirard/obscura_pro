@@ -48,6 +48,16 @@ class CardAccessService {
   /// Key under which the most recent card is remembered.
   static const lastCardKey = 'last_card';
 
+  /// Key under which a particular card is remembered, so that *any* card this
+  /// Mac has been given access to opens by itself when it comes back — not only
+  /// the one from last session.
+  ///
+  /// Keyed by mount path, and that is safe in the way that matters: a bookmark
+  /// is bound to the volume, not to the path it happens to be mounted at, so a
+  /// different card arriving at `/Volumes/Untitled` resolves stale rather than
+  /// handing out a grant for someone else's card.
+  static String cardKey(String path) => 'card:$path';
+
   /// DCF folder names: three digits then five free characters, giving
   /// `100LEICA` on a Q3. Matching the standard rather than the Leica spelling
   /// keeps a card written by another body readable.
@@ -102,6 +112,7 @@ class CardAccessService {
     // bookmark depends on the panel's implicit grant still being live, so
     // deferring it to first use fails.
     await _bookmarks.save(lastCardKey, path);
+    await _bookmarks.save(cardKey(path), path);
 
     // Resolving the bookmark just written is not a redundant round trip.
     // `startAccessingSecurityScopedResource` takes the URL that came *out of*
@@ -145,6 +156,40 @@ class CardAccessService {
   }
 
   Future<void> forgetLastCard() => _bookmarks.forget(lastCardKey);
+
+  /// Opens a mounted card this Mac has been given access to before.
+  ///
+  /// The fluent case, and the one [reopenLastCard] misses: the photographer has
+  /// two cards and swaps them, or opened another one in between. Both were
+  /// granted at some point, so both can be reopened without a panel, and asking
+  /// again for a card the user has already pointed at is the interface making
+  /// them repeat themselves.
+  ///
+  /// Same ordering as [reopenLastCard] and for the same reason: the scope comes
+  /// before the look. Tries the candidates in the order given and stops at the
+  /// first that opens.
+  Future<CardCheck?> reopenKnownCard(Iterable<String> mountedPaths) async {
+    for (final path in mountedPaths) {
+      if (path == _openCardPath) continue;
+      final resolution = await _bookmarks.resolve(cardKey(path));
+      if (resolution is! BookmarkResolved) continue;
+
+      await _hold(resolution.path);
+      try {
+        final check = await inspect(resolution.path);
+        if (check is! CardMissingDcim) {
+          // Whatever was reopened is now the card to come back to.
+          await _bookmarks.save(lastCardKey, resolution.path);
+          return check;
+        }
+      } on Object {
+        // Unreadable is indistinguishable from absent from here, and the picker
+        // is already the answer to both.
+      }
+      await closeCard();
+    }
+    return null;
+  }
 
   /// Takes the sandbox grant and starts listening for the card leaving.
   ///

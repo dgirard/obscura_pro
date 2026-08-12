@@ -113,6 +113,28 @@ class CardSelectionNotifier extends Notifier<CardSelection> {
     }
   }
 
+  /// Opens a card that is in the reader and has been granted before.
+  ///
+  /// Called at launch after [reopenLast], and again whenever a volume appears
+  /// while the app is running. A photographer who puts a card in expects to see
+  /// their photographs, not a panel asking permission they have already given.
+  Future<void> openKnown() async {
+    if (state is! CardSelectionIdle) return;
+    final cards = await ref.read(cardAccessServiceProvider).availableCards();
+    if (cards.isEmpty) return;
+    if (state is! CardSelectionIdle) return;
+
+    state = const CardSelectionBusy();
+    try {
+      final check = await _service.reopenKnownCard(cards.map((c) => c.path));
+      state = check == null || check is CardMissingDcim
+          ? const CardSelectionIdle()
+          : CardSelectionOpened(_rootOf(check), check);
+    } on Object {
+      state = const CardSelectionIdle();
+    }
+  }
+
   void reset() => state = const CardSelectionIdle();
 
   static String _rootOf(CardCheck check) => switch (check) {

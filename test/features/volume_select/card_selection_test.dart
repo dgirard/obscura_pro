@@ -65,11 +65,12 @@ void main() {
     final state = today.read(cardSelectionProvider);
     expect(state, isA<CardSelectionOpened>());
     expect((state as CardSelectionOpened).path, card.path);
-    expect(
-      bridge.calls.where((c) => c.startsWith('encode')),
-      hasLength(1),
-      reason: 'the panel grants once; reopening resolves what it granted',
-    );
+    final encodes = bridge.calls.where((c) => c.startsWith('encode')).toList();
+    // One trip through the panel, and every bookmark it wrote is for the card
+    // it granted: one under `last_card`, one under this card's own key so that
+    // it reopens by itself even after another card has been in.
+    expect(encodes, hasLength(2));
+    expect(encodes.every((c) => c.endsWith(card.path)), isTrue);
   });
 
   test('falls back to the picker when no card was ever chosen', () async {

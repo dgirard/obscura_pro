@@ -33,10 +33,19 @@ import 'dart:ui' show Rect, Size;
 /// dated folder per session so a run of exports stays together instead of
 /// silting up one directory over months.
 Future<Directory> defaultExportFolder({DateTime? now}) async {
+  final day = (now ?? DateTime.now()).toIso8601String().substring(0, 10);
+  return Directory(p.join((await defaultExportRoot()).path, day));
+}
+
+/// The folder the dated ones live in.
+///
+/// Separated because the exports screen reads *the folder*, not just the rows:
+/// what a photographer means by "my exports" is what is in there, including
+/// files this app did not put there and files it has forgotten.
+Future<Directory> defaultExportRoot() async {
   final pictures = await getApplicationDocumentsDirectory();
   final home = p.dirname(pictures.path);
-  final day = (now ?? DateTime.now()).toIso8601String().substring(0, 10);
-  return Directory(p.join(home, 'Pictures', 'Q3Culling', 'Exports', day));
+  return Directory(p.join(home, 'Pictures', 'Q3Culling', 'Exports'));
 }
 
 sealed class ExportOutcome {

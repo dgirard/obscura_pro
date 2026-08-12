@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' show Size;
 
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/foundation.dart';
@@ -6,9 +7,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../infra/db/database.dart';
 import '../../infra/db/database_provider.dart';
+import '../../infra/preview/jpeg_size.dart';
 import '../catalog/photo_entity.dart';
 import '../crop/export_service.dart';
 import '../crop/ratio.dart';
+import '../settings/settings_store.dart';
 
 /// One file this app has written to the Mac, as the exports screen shows it.
 ///
@@ -34,7 +37,8 @@ final class ExportRecord {
 
   final int id;
 
-  /// `100LEICA/L1000001` — the camera's name for the frame it came from.
+  /// `100LEICA/L1000001` — the camera's name for the frame it came from, or
+  /// empty for a file this app has no record of.
   final String radical;
 
   /// Nominal ratio label, e.g. `3:2`.
@@ -64,6 +68,22 @@ final class ExportRecord {
   String get dimensions => pixelWidth == null || pixelHeight == null
       ? '—'
       : '$pixelWidth × $pixelHeight px';
+
+  /// True for a file found in the export folder that no row describes.
+  ///
+  /// It is the user's export as far as they are concerned — it is in their
+  /// export folder — and leaving it out because this app has no row for it
+  /// would make the screen a view of the database rather than of the folder.
+  bool get untracked => id < 0;
+
+  /// The line under the file name: the frame it came from and the crop, when
+  /// they are known, and what the file itself says when they are not.
+  String get detail => [
+        if (radical.isNotEmpty) radical,
+        if (ratio.isNotEmpty && ratio != '—') ratio,
+        dimensions,
+        if (untracked) 'trouvé dans le dossier',
+      ].join('  ·  ');
 }
 
 /// Where the traceability of an export lives.
@@ -89,9 +109,13 @@ abstract interface class ExportStore {
 }
 
 class DriftExportStore implements ExportStore {
-  DriftExportStore(this._db);
+  DriftExportStore(this._db, {Future<Directory> Function()? root})
+      : _root = root ?? defaultExportRoot;
 
   final AppDatabase _db;
+
+  /// Where exports go. Read as well as written: see [all].
+  final Future<Directory> Function() _root;
 
   @override
   Future<void> record({
@@ -119,17 +143,93 @@ class DriftExportStore implements ExportStore {
     );
   }
 
+  /// Everything exported, newest first: the rows, and then whatever else is in
+  /// the export folder.
+  ///
+  /// The folder is the authority on what exists; the rows are what this app
+  /// knows *about* what exists — which frame it came from, which crop, how
+  /// large it came out. A file with no row is listed with what the file itself
+  /// can say, because a photographer looking at their export folder through
+  /// this screen should see the same files the Finder would show them.
   @override
   Future<List<ExportRecord>> all() async {
     final rows = await _db.compositionDao.allExports();
-    return [
-      for (final (export, photo) in rows)
-        await _describe(export, photo),
+    final records = [
+      for (final (export, photo) in rows) await _describe(export, photo),
     ];
+
+    final known = {for (final record in records) record.path};
+    records.addAll(await _looseFiles(known));
+    // One order for both kinds: newest first, whatever put them there.
+    records.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return records;
+  }
+
+  /// Image files under the export folder that no row accounts for.
+  Future<List<ExportRecord>> _looseFiles(Set<String> known) async {
+    final Directory root;
+    try {
+      root = await _root();
+      if (!await root.exists()) return const [];
+    } on Object {
+      return const [];
+    }
+
+    final out = <ExportRecord>[];
+    await for (final entity in root.list(recursive: true, followLinks: false)) {
+      if (entity is! File) continue;
+      final name = entity.path.split('/').last;
+      if (!_isJpeg(name) || known.contains(entity.path)) continue;
+
+      final stat = await entity.stat();
+      final size = await _headerSize(entity);
+      out.add(ExportRecord(
+        // Negative, and never a row id: nothing can be forgotten from the
+        // database that was never in it.
+        id: -out.length - 1,
+        radical: '',
+        ratio: '—',
+        orientation: '',
+        path: entity.path,
+        createdAt: stat.modified,
+        pixelWidth: size?.width.round(),
+        pixelHeight: size?.height.round(),
+        byteSize: stat.size,
+      ));
+    }
+    return out;
+  }
+
+  static bool _isJpeg(String name) {
+    final lower = name.toLowerCase();
+    return !name.startsWith('.') &&
+        (lower.endsWith('.jpg') || lower.endsWith('.jpeg'));
+  }
+
+  /// The size the file declares, from its first bytes.
+  ///
+  /// Sixty-four kilobytes is past any frame header a camera or this app writes,
+  /// and short of reading a 12 MB export to fill in one column.
+  static Future<Size?> _headerSize(File file) async {
+    try {
+      final handle = await file.open();
+      try {
+        return jpegPixelSize(await handle.read(64 * 1024));
+      } finally {
+        await handle.close();
+      }
+    } on Object {
+      return null;
+    }
   }
 
   @override
-  Future<void> forget(int id) => _db.compositionDao.forgetExport(id);
+  Future<void> forget(int id) async {
+    // A file the database never knew about has no row to drop; the screen has
+    // already dealt with the file itself.
+    if (id < 0) return;
+    await _db.compositionDao.forgetExport(id);
+  }
 
   Future<ExportRecord> _describe(CropExport export, Photo photo) async {
     final file = File(export.exportPath);
@@ -182,7 +282,13 @@ class InMemoryExportStore implements ExportStore {
 
 /// Overridden in widget tests, which have no database.
 final exportStoreProvider = Provider<ExportStore>(
-  (ref) => DriftExportStore(ref.watch(appDatabaseProvider)),
+  (ref) => DriftExportStore(
+    ref.watch(appDatabaseProvider),
+    root: () async {
+      final chosen = (await ref.read(settingsProvider.future)).exportFolder;
+      return chosen == null ? defaultExportRoot() : Directory(chosen);
+    },
+  ),
 );
 
 /// The exports, as the screen reads them.

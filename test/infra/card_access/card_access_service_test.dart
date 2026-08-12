@@ -198,6 +198,66 @@ void main() {
       expect(bridge.started, bridge.stopped);
     });
 
+    test('a card granted before this one opens by itself', () async {
+      // Two cards, both granted at some point, the second one open last. The
+      // photographer puts the first back in: it has been pointed at before, so
+      // asking them through a panel again is the interface making them repeat
+      // themselves.
+      final first = await makeCardTree();
+      addTearDown(() => first.delete(recursive: true));
+      final second = await makeCardTree();
+      addTearDown(() => second.delete(recursive: true));
+
+      for (final card in [first, second]) {
+        final chosen = serviceFor(picks: card.path);
+        await chosen.chooseCard();
+        await chosen.dispose();
+      }
+      bridge.calls.clear();
+
+      final service = serviceFor();
+      addTearDown(service.dispose);
+      final check = await service.reopenKnownCard([first.path]);
+
+      expect(check, isA<CardAccepted>());
+      expect(service.openCardPath, first.path);
+      // Same ordering rule as the launch-time reopen.
+      expect(bridge.calls.indexWhere((c) => c.startsWith('decode:')),
+          lessThan(bridge.calls.indexWhere((c) => c.startsWith('start:'))));
+      // And it becomes the card to come back to next launch.
+      expect(await service.reopenLastCard(), isA<CardAccepted>());
+    });
+
+    test('a card that was never granted stays shut', () async {
+      final stranger = await makeCardTree();
+      addTearDown(() => stranger.delete(recursive: true));
+
+      final service = serviceFor();
+      addTearDown(service.dispose);
+
+      // Seeing a volume is not being allowed to read it, and this is the line
+      // the sandbox draws: no bookmark, no card, whatever is in the reader.
+      expect(await service.reopenKnownCard([stranger.path]), isNull);
+      expect(service.openCardPath, isNull);
+      expect(bridge.started, bridge.stopped);
+    });
+
+    test('a card whose bookmark no longer resolves gives the scope back',
+        () async {
+      final card = await makeCardTree();
+      addTearDown(() => card.delete(recursive: true));
+      final chosen = serviceFor(picks: card.path);
+      await chosen.chooseCard();
+      await chosen.dispose();
+
+      bridge.decodeThrows = StateError('reformatted');
+      final service = serviceFor();
+      addTearDown(service.dispose);
+
+      expect(await service.reopenKnownCard([card.path]), isNull);
+      expect(bridge.started, bridge.stopped);
+    });
+
     test('reopening reports nothing when no card was ever chosen', () async {
       final service = serviceFor();
       addTearDown(service.dispose);
