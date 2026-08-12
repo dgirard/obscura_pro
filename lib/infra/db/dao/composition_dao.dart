@@ -7,7 +7,7 @@ part 'composition_dao.g.dart';
 
 /// Layer placements and export traceability -- the two things the app records
 /// *about* a photo without ever modifying it.
-@DriftAccessor(tables: [LayerInstances, CropExports])
+@DriftAccessor(tables: [LayerInstances, CropExports, Photos])
 class CompositionDao extends DatabaseAccessor<AppDatabase> with _$CompositionDaoMixin {
   CompositionDao(super.db);
 
@@ -46,6 +46,30 @@ class CompositionDao extends DatabaseAccessor<AppDatabase> with _$CompositionDao
 
   Future<int> recordCropExport(CropExportsCompanion export) =>
       into(cropExports).insert(export);
+
+  /// Every export this Mac has made, newest first, with the photograph it came
+  /// from.
+  ///
+  /// Joined rather than looked up per row: the exports screen shows the frame's
+  /// DCF name beside each file, and a query per line would be one round trip
+  /// per export for a value that is one join away.
+  Future<List<(CropExport, Photo)>> allExports() async {
+    final query = select(cropExports).join([
+      innerJoin(photos, photos.id.equalsExp(cropExports.photoId)),
+    ])
+      ..orderBy([
+        OrderingTerm(expression: cropExports.createdAt, mode: OrderingMode.desc),
+        OrderingTerm(expression: cropExports.id, mode: OrderingMode.desc),
+      ]);
+
+    return [
+      for (final row in await query.get())
+        (row.readTable(cropExports), row.readTable(photos)),
+    ];
+  }
+
+  Future<int> forgetExport(int id) =>
+      (delete(cropExports)..where((e) => e.id.equals(id))).go();
 
   /// Most recent first: the export list is a history, read from the top.
   Future<List<CropExport>> exportsOfPhoto(int photoId) => (select(cropExports)

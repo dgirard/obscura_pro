@@ -158,6 +158,16 @@ class CropExports extends Table {
   /// Always a Mac path. Exports never land on the card.
   TextColumn get exportPath => text()();
 
+  /// Pixel size of the file that was written.
+  ///
+  /// Recorded at export rather than read back from the file: the list of
+  /// exports has to be able to say what a crop actually produced without
+  /// decoding a few dozen multi-megabyte JPEGs to find out, and the number is
+  /// in hand at the moment the file is written. Nullable because rows written
+  /// before this column existed have no honest answer.
+  IntColumn get pixelWidth => integer().nullable()();
+  IntColumn get pixelHeight => integer().nullable()();
+
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 

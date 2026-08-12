@@ -13,6 +13,7 @@ import '../volume_select/card_selection.dart';
 import '../../app/app_shell.dart';
 import '../../infra/safety/io_errors.dart';
 import '../../infra/safety/parasite_guard.dart';
+import '../exports/exports_screen.dart';
 import '../settings/settings_screen.dart';
 import '../settings/settings_store.dart';
 import '../trash/trash_providers.dart';
@@ -389,6 +390,8 @@ class LibraryScreen extends ConsumerWidget {
     switch (ref.watch(librarySectionProvider)) {
       case LibrarySection.trash:
         return const TrashScreen();
+      case LibrarySection.exports:
+        return const ExportsScreen();
       case LibrarySection.settings:
         return const SettingsScreen();
       case LibrarySection.library:

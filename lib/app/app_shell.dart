@@ -55,11 +55,15 @@ final librarySectionProvider =
 
 /// Where the session lives.
 ///
-/// Three destinations, not the maquette's seven. Recents, Favorites, Import and
+/// Four destinations, not the maquette's seven. Recents, Favorites, Import and
 /// Cloud Sync all describe a library the app keeps; this one keeps none — the
 /// photographs stay on the card until the user exports or deletes them, and a
 /// menu entry promising otherwise would be the first lie the interface tells.
-enum LibrarySection { library, card, trash, settings }
+///
+/// [exports] is the one place the app does keep files, and it says so: those
+/// are on the Mac, they are what the user asked for, and until this destination
+/// existed the only sign of them was a filename in the crop bar.
+enum LibrarySection { library, card, exports, trash, settings }
 
 class _Sidebar extends ConsumerWidget {
   const _Sidebar();
@@ -84,6 +88,7 @@ class _Sidebar extends ConsumerWidget {
           for (final (section, icon, label) in const [
             (LibrarySection.library, Icons.photo_library_outlined, 'Bibliothèque'),
             (LibrarySection.card, Icons.sd_card_outlined, 'Carte SD'),
+            (LibrarySection.exports, Icons.ios_share, 'Exports'),
             (LibrarySection.trash, Icons.delete_outline, 'Corbeille'),
             (LibrarySection.settings, Icons.tune, 'Réglages'),
           ])

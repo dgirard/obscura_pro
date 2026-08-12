@@ -5,13 +5,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:obscura_pro/infra/db/database.dart';
 import 'package:path/path.dart' as p;
 
-/// Schema v2 → v3: the pattern library stops claiming to hold SVG.
+/// Schema v2 → v4: the pattern library stops claiming to hold SVG (v3), and an
+/// export records the size it came out at (v4).
 ///
-/// The migration rebuilds `pattern`, which is the one kind of migration that
-/// can quietly break a foreign key — so the test puts a layer instance on a
-/// pattern first and checks it still points at it afterwards. The database is
-/// taken back to v2 with raw statements rather than restored from a dump,
-/// because the v2 shape is four columns and a dump would be a second copy of
+/// The v3 step rebuilds `pattern`, which is the one kind of migration that can
+/// quietly break a foreign key — so the test puts a layer instance on a pattern
+/// first and checks it still points at it afterwards. The database is taken
+/// back to v2 with raw statements rather than restored from a dump, because
+/// what changed is a handful of columns and a dump would be a second copy of
 /// them to keep in step.
 void main() {
   late Directory dir;
@@ -26,7 +27,8 @@ void main() {
     if (await dir.exists()) await dir.delete(recursive: true);
   });
 
-  /// A database as v2 left it: a seeded pattern, a photo, and a layer on both.
+  /// A database as v2 left it: a seeded pattern, a photo, a layer on both, and
+  /// an export from before exports recorded their pixel size.
   Future<void> writeVersion2() async {
     final db = AppDatabase.forTesting(NativeDatabase(file));
     // Forces the schema to exist before it is taken apart.
@@ -57,6 +59,23 @@ void main() {
       'scale_x, scale_y, rotation, opacity, color, z_index, locked, obscura) '
       'VALUES (1, 1, 7, 0.5, 0.5, 1, 1, 0, 0.6, 4292927448, 0, 0, 0)',
     );
+    await db.customStatement('DROP TABLE crop_export');
+    await db.customStatement(
+      'CREATE TABLE crop_export ('
+      'id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, '
+      'photo_id INTEGER NOT NULL REFERENCES photo (id) ON DELETE CASCADE, '
+      'ratio TEXT NOT NULL, orientation TEXT NOT NULL, '
+      'rect_x REAL NOT NULL, rect_y REAL NOT NULL, '
+      'rect_w REAL NOT NULL, rect_h REAL NOT NULL, '
+      'export_path TEXT NOT NULL, '
+      "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))",
+    );
+    await db.customStatement(
+      'INSERT INTO crop_export (id, photo_id, ratio, orientation, rect_x, '
+      'rect_y, rect_w, rect_h, export_path) '
+      "VALUES (1, 1, '3:2', 'landscape', 0, 0, 1, 1, "
+      "'/Users/x/Pictures/Q3Culling/Exports/2026-08-01/L1000001_3x2_01.jpg')",
+    );
     await db.customStatement('PRAGMA user_version = 2');
     await db.close();
   }
@@ -80,7 +99,23 @@ void main() {
     expect(layers.single.patternId, 7);
   });
 
-  test('leaves a v3 database alone', () async {
+  test('keeps an export written before it could say how large it was', () async {
+    await writeVersion2();
+
+    final db = AppDatabase.forTesting(NativeDatabase(file));
+    addTearDown(db.close);
+
+    final (export, photo) = (await db.compositionDao.allExports()).single;
+    expect(export.ratio, '3:2');
+    expect(photo.radicalDcf, '100LEICA/L1000001');
+    // Null rather than a guess: the file's size is knowable only by decoding
+    // it, and inventing a number here would put it in a column the exports
+    // screen presents as recorded fact.
+    expect(export.pixelWidth, isNull);
+    expect(export.pixelHeight, isNull);
+  });
+
+  test('leaves a current database alone', () async {
     var db = AppDatabase.forTesting(NativeDatabase(file));
     await db.catalogDao.allPatterns();
     await db.close();

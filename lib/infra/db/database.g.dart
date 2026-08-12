@@ -1894,6 +1894,28 @@ class $CropExportsTable extends CropExports
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _pixelWidthMeta = const VerificationMeta(
+    'pixelWidth',
+  );
+  @override
+  late final GeneratedColumn<int> pixelWidth = GeneratedColumn<int>(
+    'pixel_width',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _pixelHeightMeta = const VerificationMeta(
+    'pixelHeight',
+  );
+  @override
+  late final GeneratedColumn<int> pixelHeight = GeneratedColumn<int>(
+    'pixel_height',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -1917,6 +1939,8 @@ class $CropExportsTable extends CropExports
     rectW,
     rectH,
     exportPath,
+    pixelWidth,
+    pixelHeight,
     createdAt,
   ];
   @override
@@ -2001,6 +2025,21 @@ class $CropExportsTable extends CropExports
     } else if (isInserting) {
       context.missing(_exportPathMeta);
     }
+    if (data.containsKey('pixel_width')) {
+      context.handle(
+        _pixelWidthMeta,
+        pixelWidth.isAcceptableOrUnknown(data['pixel_width']!, _pixelWidthMeta),
+      );
+    }
+    if (data.containsKey('pixel_height')) {
+      context.handle(
+        _pixelHeightMeta,
+        pixelHeight.isAcceptableOrUnknown(
+          data['pixel_height']!,
+          _pixelHeightMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -2052,6 +2091,14 @@ class $CropExportsTable extends CropExports
         DriftSqlType.string,
         data['${effectivePrefix}export_path'],
       )!,
+      pixelWidth: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}pixel_width'],
+      ),
+      pixelHeight: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}pixel_height'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -2081,6 +2128,16 @@ class CropExport extends DataClass implements Insertable<CropExport> {
 
   /// Always a Mac path. Exports never land on the card.
   final String exportPath;
+
+  /// Pixel size of the file that was written.
+  ///
+  /// Recorded at export rather than read back from the file: the list of
+  /// exports has to be able to say what a crop actually produced without
+  /// decoding a few dozen multi-megabyte JPEGs to find out, and the number is
+  /// in hand at the moment the file is written. Nullable because rows written
+  /// before this column existed have no honest answer.
+  final int? pixelWidth;
+  final int? pixelHeight;
   final DateTime createdAt;
   const CropExport({
     required this.id,
@@ -2092,6 +2149,8 @@ class CropExport extends DataClass implements Insertable<CropExport> {
     required this.rectW,
     required this.rectH,
     required this.exportPath,
+    this.pixelWidth,
+    this.pixelHeight,
     required this.createdAt,
   });
   @override
@@ -2106,6 +2165,12 @@ class CropExport extends DataClass implements Insertable<CropExport> {
     map['rect_w'] = Variable<double>(rectW);
     map['rect_h'] = Variable<double>(rectH);
     map['export_path'] = Variable<String>(exportPath);
+    if (!nullToAbsent || pixelWidth != null) {
+      map['pixel_width'] = Variable<int>(pixelWidth);
+    }
+    if (!nullToAbsent || pixelHeight != null) {
+      map['pixel_height'] = Variable<int>(pixelHeight);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
   }
@@ -2121,6 +2186,12 @@ class CropExport extends DataClass implements Insertable<CropExport> {
       rectW: Value(rectW),
       rectH: Value(rectH),
       exportPath: Value(exportPath),
+      pixelWidth: pixelWidth == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pixelWidth),
+      pixelHeight: pixelHeight == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pixelHeight),
       createdAt: Value(createdAt),
     );
   }
@@ -2140,6 +2211,8 @@ class CropExport extends DataClass implements Insertable<CropExport> {
       rectW: serializer.fromJson<double>(json['rectW']),
       rectH: serializer.fromJson<double>(json['rectH']),
       exportPath: serializer.fromJson<String>(json['exportPath']),
+      pixelWidth: serializer.fromJson<int?>(json['pixelWidth']),
+      pixelHeight: serializer.fromJson<int?>(json['pixelHeight']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
   }
@@ -2156,6 +2229,8 @@ class CropExport extends DataClass implements Insertable<CropExport> {
       'rectW': serializer.toJson<double>(rectW),
       'rectH': serializer.toJson<double>(rectH),
       'exportPath': serializer.toJson<String>(exportPath),
+      'pixelWidth': serializer.toJson<int?>(pixelWidth),
+      'pixelHeight': serializer.toJson<int?>(pixelHeight),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
   }
@@ -2170,6 +2245,8 @@ class CropExport extends DataClass implements Insertable<CropExport> {
     double? rectW,
     double? rectH,
     String? exportPath,
+    Value<int?> pixelWidth = const Value.absent(),
+    Value<int?> pixelHeight = const Value.absent(),
     DateTime? createdAt,
   }) => CropExport(
     id: id ?? this.id,
@@ -2181,6 +2258,8 @@ class CropExport extends DataClass implements Insertable<CropExport> {
     rectW: rectW ?? this.rectW,
     rectH: rectH ?? this.rectH,
     exportPath: exportPath ?? this.exportPath,
+    pixelWidth: pixelWidth.present ? pixelWidth.value : this.pixelWidth,
+    pixelHeight: pixelHeight.present ? pixelHeight.value : this.pixelHeight,
     createdAt: createdAt ?? this.createdAt,
   );
   CropExport copyWithCompanion(CropExportsCompanion data) {
@@ -2198,6 +2277,12 @@ class CropExport extends DataClass implements Insertable<CropExport> {
       exportPath: data.exportPath.present
           ? data.exportPath.value
           : this.exportPath,
+      pixelWidth: data.pixelWidth.present
+          ? data.pixelWidth.value
+          : this.pixelWidth,
+      pixelHeight: data.pixelHeight.present
+          ? data.pixelHeight.value
+          : this.pixelHeight,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -2214,6 +2299,8 @@ class CropExport extends DataClass implements Insertable<CropExport> {
           ..write('rectW: $rectW, ')
           ..write('rectH: $rectH, ')
           ..write('exportPath: $exportPath, ')
+          ..write('pixelWidth: $pixelWidth, ')
+          ..write('pixelHeight: $pixelHeight, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -2230,6 +2317,8 @@ class CropExport extends DataClass implements Insertable<CropExport> {
     rectW,
     rectH,
     exportPath,
+    pixelWidth,
+    pixelHeight,
     createdAt,
   );
   @override
@@ -2245,6 +2334,8 @@ class CropExport extends DataClass implements Insertable<CropExport> {
           other.rectW == this.rectW &&
           other.rectH == this.rectH &&
           other.exportPath == this.exportPath &&
+          other.pixelWidth == this.pixelWidth &&
+          other.pixelHeight == this.pixelHeight &&
           other.createdAt == this.createdAt);
 }
 
@@ -2258,6 +2349,8 @@ class CropExportsCompanion extends UpdateCompanion<CropExport> {
   final Value<double> rectW;
   final Value<double> rectH;
   final Value<String> exportPath;
+  final Value<int?> pixelWidth;
+  final Value<int?> pixelHeight;
   final Value<DateTime> createdAt;
   const CropExportsCompanion({
     this.id = const Value.absent(),
@@ -2269,6 +2362,8 @@ class CropExportsCompanion extends UpdateCompanion<CropExport> {
     this.rectW = const Value.absent(),
     this.rectH = const Value.absent(),
     this.exportPath = const Value.absent(),
+    this.pixelWidth = const Value.absent(),
+    this.pixelHeight = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
   CropExportsCompanion.insert({
@@ -2281,6 +2376,8 @@ class CropExportsCompanion extends UpdateCompanion<CropExport> {
     required double rectW,
     required double rectH,
     required String exportPath,
+    this.pixelWidth = const Value.absent(),
+    this.pixelHeight = const Value.absent(),
     this.createdAt = const Value.absent(),
   }) : photoId = Value(photoId),
        ratio = Value(ratio),
@@ -2300,6 +2397,8 @@ class CropExportsCompanion extends UpdateCompanion<CropExport> {
     Expression<double>? rectW,
     Expression<double>? rectH,
     Expression<String>? exportPath,
+    Expression<int>? pixelWidth,
+    Expression<int>? pixelHeight,
     Expression<DateTime>? createdAt,
   }) {
     return RawValuesInsertable({
@@ -2312,6 +2411,8 @@ class CropExportsCompanion extends UpdateCompanion<CropExport> {
       if (rectW != null) 'rect_w': rectW,
       if (rectH != null) 'rect_h': rectH,
       if (exportPath != null) 'export_path': exportPath,
+      if (pixelWidth != null) 'pixel_width': pixelWidth,
+      if (pixelHeight != null) 'pixel_height': pixelHeight,
       if (createdAt != null) 'created_at': createdAt,
     });
   }
@@ -2326,6 +2427,8 @@ class CropExportsCompanion extends UpdateCompanion<CropExport> {
     Value<double>? rectW,
     Value<double>? rectH,
     Value<String>? exportPath,
+    Value<int?>? pixelWidth,
+    Value<int?>? pixelHeight,
     Value<DateTime>? createdAt,
   }) {
     return CropExportsCompanion(
@@ -2338,6 +2441,8 @@ class CropExportsCompanion extends UpdateCompanion<CropExport> {
       rectW: rectW ?? this.rectW,
       rectH: rectH ?? this.rectH,
       exportPath: exportPath ?? this.exportPath,
+      pixelWidth: pixelWidth ?? this.pixelWidth,
+      pixelHeight: pixelHeight ?? this.pixelHeight,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -2372,6 +2477,12 @@ class CropExportsCompanion extends UpdateCompanion<CropExport> {
     if (exportPath.present) {
       map['export_path'] = Variable<String>(exportPath.value);
     }
+    if (pixelWidth.present) {
+      map['pixel_width'] = Variable<int>(pixelWidth.value);
+    }
+    if (pixelHeight.present) {
+      map['pixel_height'] = Variable<int>(pixelHeight.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -2390,6 +2501,8 @@ class CropExportsCompanion extends UpdateCompanion<CropExport> {
           ..write('rectW: $rectW, ')
           ..write('rectH: $rectH, ')
           ..write('exportPath: $exportPath, ')
+          ..write('pixelWidth: $pixelWidth, ')
+          ..write('pixelHeight: $pixelHeight, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -5288,6 +5401,8 @@ typedef $$CropExportsTableCreateCompanionBuilder =
       required double rectW,
       required double rectH,
       required String exportPath,
+      Value<int?> pixelWidth,
+      Value<int?> pixelHeight,
       Value<DateTime> createdAt,
     });
 typedef $$CropExportsTableUpdateCompanionBuilder =
@@ -5301,6 +5416,8 @@ typedef $$CropExportsTableUpdateCompanionBuilder =
       Value<double> rectW,
       Value<double> rectH,
       Value<String> exportPath,
+      Value<int?> pixelWidth,
+      Value<int?> pixelHeight,
       Value<DateTime> createdAt,
     });
 
@@ -5372,6 +5489,16 @@ class $$CropExportsTableFilterComposer
 
   ColumnFilters<String> get exportPath => $composableBuilder(
     column: $table.exportPath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get pixelWidth => $composableBuilder(
+    column: $table.pixelWidth,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get pixelHeight => $composableBuilder(
+    column: $table.pixelHeight,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5453,6 +5580,16 @@ class $$CropExportsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get pixelWidth => $composableBuilder(
+    column: $table.pixelWidth,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get pixelHeight => $composableBuilder(
+    column: $table.pixelHeight,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -5516,6 +5653,16 @@ class $$CropExportsTableAnnotationComposer
 
   GeneratedColumn<String> get exportPath => $composableBuilder(
     column: $table.exportPath,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get pixelWidth => $composableBuilder(
+    column: $table.pixelWidth,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get pixelHeight => $composableBuilder(
+    column: $table.pixelHeight,
     builder: (column) => column,
   );
 
@@ -5583,6 +5730,8 @@ class $$CropExportsTableTableManager
                 Value<double> rectW = const Value.absent(),
                 Value<double> rectH = const Value.absent(),
                 Value<String> exportPath = const Value.absent(),
+                Value<int?> pixelWidth = const Value.absent(),
+                Value<int?> pixelHeight = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => CropExportsCompanion(
                 id: id,
@@ -5594,6 +5743,8 @@ class $$CropExportsTableTableManager
                 rectW: rectW,
                 rectH: rectH,
                 exportPath: exportPath,
+                pixelWidth: pixelWidth,
+                pixelHeight: pixelHeight,
                 createdAt: createdAt,
               ),
           createCompanionCallback:
@@ -5607,6 +5758,8 @@ class $$CropExportsTableTableManager
                 required double rectW,
                 required double rectH,
                 required String exportPath,
+                Value<int?> pixelWidth = const Value.absent(),
+                Value<int?> pixelHeight = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => CropExportsCompanion.insert(
                 id: id,
@@ -5618,6 +5771,8 @@ class $$CropExportsTableTableManager
                 rectW: rectW,
                 rectH: rectH,
                 exportPath: exportPath,
+                pixelWidth: pixelWidth,
+                pixelHeight: pixelHeight,
                 createdAt: createdAt,
               ),
           withReferenceMapper: (p0) => p0

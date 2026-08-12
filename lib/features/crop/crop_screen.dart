@@ -8,6 +8,7 @@ import '../../app/shortcuts.dart';
 import '../../app/theme.dart';
 import '../../infra/geometry/view_transform.dart';
 import '../catalog/photo_entity.dart';
+import '../exports/export_store.dart';
 import '../viewer/obscura.dart';
 import '../viewer/viewer_screen.dart';
 import '../settings/settings_store.dart';
@@ -201,6 +202,25 @@ class _CropScreenState extends ConsumerState<CropScreen> {
           _failure = reason;
       }
     });
+
+    // Recorded after the file is on disk, never before: `crop_export` is a
+    // record of what was written, and a row for a file that failed to be
+    // written would be the exports list inventing a deliverable. A refused
+    // write leaves the file — which is the half that matters — and says so.
+    if (outcome case final ExportWritten written) {
+      try {
+        await ref.read(exportStoreProvider).record(
+              photo: widget.photo,
+              crop: crop,
+              written: written,
+            );
+      } on Object catch (error) {
+        if (mounted) {
+          setState(() => _failure =
+              'Exporté, mais non consigné dans la liste des exports : $error');
+        }
+      }
+    }
   }
 
   /// Whether the pointer went down on a corner, and which.

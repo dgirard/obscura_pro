@@ -11,6 +11,8 @@ class MainFlutterWindow: NSWindow {
     RegisterGeneratedPlugins(registry: flutterViewController)
     VolumeChannel.register(
       with: flutterViewController.registrar(forPlugin: "VolumeChannel"))
+    FinderChannel.register(
+      with: flutterViewController.registrar(forPlugin: "FinderChannel"))
 
     super.awakeFromNib()
   }

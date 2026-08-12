@@ -13,22 +13,7 @@ building the thing.
 
 ## Asked for, not yet built
 
-### An exports viewer
-Requested 2026-08-12. Today an export lands in
-`~/Pictures/Q3Culling/Exports/<date>/` and the only feedback is a filename in
-the crop bar. A photographer who has just made a decision about a frame should
-be able to see the result of it without leaving for the Finder.
-
-Wanted, roughly: a fourth sidebar destination listing what has been exported —
-by session, newest first — with the crop's ratio and pixel size, the ability to
-open one full-frame, to reveal it in the Finder, and to delete an export that
-was a mistake. The `crop_export` table already records every export with its
-photo, ratio, rectangle and path, so the data is there; nothing reads it back
-yet.
-
-Two things it must not do: pretend an export still exists when the user has
-moved or deleted it behind the app's back, and offer to "restore" an export to
-the card. Exports are Mac-side deliverables and the card is not their home.
+Nothing. The exports viewer requested on 2026-08-12 is below, under Decided.
 
 ---
 
@@ -57,6 +42,10 @@ several need a card whose contents are expendable.
   put the card back (ideally in another reader, at another mount point), and
   reopen the same photograph. The unit test proves the key does not depend on
   the path; only the card proves the key survives the round trip.
+- **The Finder channel, on a signed build.** Revealing an export and moving one
+  to the Trash both go through `NSWorkspace` and `FileManager.trashItem`, which
+  the sandbox allows for files under `~/Pictures` — the entitlement is there.
+  Neither can be exercised headlessly: a test can only check that the app asked.
 - **The launch-time reopen, on a signed build.** The order — scope first, then
   look at the card — is what makes it work under the sandbox, and no test can
   prove that: `RecordingBridge` grants everything it is asked for. Quit with a
@@ -81,6 +70,13 @@ covering *layers and marking*. U13 built the composition's undo stack and wired
 those keys to it; marking has none, so on a photograph with no layers on it the
 keys do nothing. Marks are written through, so the undo that is missing is a
 convenience rather than a way of losing a decision — but the table promises it.
+
+### An export is listed but not searchable
+The exports destination lists everything this Mac has exported, grouped by the
+dated folder it went into. On a long-running library that is a long list with no
+filter, no search by frame, and no way to jump from an export back to the
+photograph it came from — which the `crop_export` row could support, since it
+holds the photo id. Fine at a session's scale; not fine at a year's.
 
 ### A guide is a judgement, not a deliverable
 Composition layers are drawn over the photograph and are never burned into an
@@ -131,6 +127,32 @@ undecided rather than decided.
 ---
 
 ## Decided
+
+### The exports have a destination of their own — 2026-08-12
+Asked for the same day: an export landed in
+`~/Pictures/Q3Culling/Exports/<date>/` and the only sign of it was a filename in
+the crop bar. It is now the fourth entry in the sidebar — by session, newest
+first, each row drawing the exported file itself with the frame it came from,
+its ratio and the pixel size it came out at.
+
+The premise turned out to be half wrong, and finding that is most of the work:
+`crop_export` was described as already recording every export, and nothing had
+ever written a row to it. `ExportService` produced the file and returned; the
+recording is now done by the crop screen, *after* the bytes are on disk, so a
+refused write cannot leave the list claiming a deliverable that does not exist.
+Schema v4 adds the pixel size to that row, because the alternative is decoding
+a few dozen multi-megabyte JPEGs to draw a list.
+
+The two prohibitions hold. A file the user has moved or deleted from the Finder
+is shown as moved — every row is checked against the disk as the list is built —
+rather than as an error or, worse, as still being there. And nothing offers to
+put an export back on the card.
+
+Removing an export moves it to the Mac's Trash and then drops the row, in that
+order: a crash between the two leaves a row this list shows as missing, where
+the other order would leave a file nothing in the app remembers. `trashItem`,
+not an unlink — this app deletes exactly one class of thing for good, and a JPEG
+on the user's own Mac is not it.
 
 ### The Grammaire's schemas are not overlay assets — 2026-08-12
 U12 expected the thirty inline SVGs of `grammaire-du-cadre.html` to be lifted

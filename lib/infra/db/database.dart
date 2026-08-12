@@ -54,7 +54,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -86,6 +86,14 @@ class AppDatabase extends _$AppDatabase {
               TableMigration(patterns, newColumns: [patterns.kind]),
             );
             version = 3;
+          }
+
+          // v4 lets an export say how large it came out, so the exports list
+          // can quote a pixel size without decoding every file it lists.
+          if (version == 3) {
+            await m.addColumn(cropExports, cropExports.pixelWidth);
+            await m.addColumn(cropExports, cropExports.pixelHeight);
+            version = 4;
           }
 
           if (version != to) {

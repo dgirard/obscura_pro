@@ -89,6 +89,12 @@ void main() {
           ..execute('CREATE TABLE pattern (id INTEGER NOT NULL PRIMARY KEY '
               'AUTOINCREMENT, code TEXT NOT NULL UNIQUE, nom TEXT NOT NULL, '
               'categorie TEXT NOT NULL, svg TEXT NOT NULL, aspect_ratio REAL)')
+          ..execute('CREATE TABLE crop_export (id INTEGER NOT NULL PRIMARY KEY '
+              'AUTOINCREMENT, photo_id INTEGER NOT NULL REFERENCES photo (id) '
+              'ON DELETE CASCADE, ratio TEXT NOT NULL, orientation TEXT NOT '
+              'NULL, rect_x REAL NOT NULL, rect_y REAL NOT NULL, rect_w REAL '
+              'NOT NULL, rect_h REAL NOT NULL, export_path TEXT NOT NULL, '
+              "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))")
           ..execute("INSERT INTO pattern (code, nom, categorie, svg) "
               "VALUES ('rule-of-thirds', 'Règle des tiers', 'grilles', 'M0,0')")
           ..execute("INSERT INTO photo (cle_stable, radical_dcf) "
@@ -119,8 +125,8 @@ void main() {
   });
 
   group('schema', () {
-    test('creates every table cleanly at schemaVersion 3', () async {
-      expect(db.schemaVersion, 3);
+    test('creates every table cleanly at schemaVersion 4', () async {
+      expect(db.schemaVersion, 4);
 
       final tables = await db
           .customSelect("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
