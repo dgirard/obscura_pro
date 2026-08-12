@@ -151,6 +151,27 @@ same order — open, place, then let the read land — and fails without the wai
 The sixteen rows are gone; nothing could bring them back, and the honest note is
 that the app lost them.
 
+### A frame chosen in obscura is the frame that gets cut — 2026-08-12
+Reported after using it: "j'ai recadré en mode obscura, mais l'export ne prend
+pas en compte le fait que je suis dans ce mode". Exactly right, and the cause
+was one missing argument: crop mode built its `ViewTransform` without the
+obscura flag. The picture was drawn turned and the rectangle was measured
+upright, so a frame put around the subject at the top of the screen came out of
+the export as the opposite corner of the photograph.
+
+Obscura now goes into that chain, where KTD-12 says it belongs and nowhere else.
+The stored rectangle stays in upright normalized space — which is what keeps the
+exported file the right way up whichever way the photographer was looking at it
+— and the drag delta goes through the transform rather than being divided by the
+fitted rectangle, because with the picture turned a drag to the right moves the
+frame to the left of what it is cutting.
+
+The test that pinned it found a second fault in the same screen: a corner handle
+was looked for where the *pan was recognised*, some twenty pixels from where the
+pointer went down, so a drag that started exactly on a handle came out as a move
+of the whole frame. It is taken at pointer-down now — the same fix the layer
+canvas needed, for the same reason.
+
 ### Crop mode shows the crop — 2026-08-12
 Asked for after using it: "le recadrage ne fait pas crop d'image". The exports
 were in fact cropped — the files on disk are 5039 × 7559, 2563 × 2563,

@@ -8,7 +8,9 @@ import 'package:obscura_pro/features/catalog/photo_entity.dart';
 import 'package:obscura_pro/features/catalog/stable_key.dart';
 import 'package:obscura_pro/features/crop/crop_screen.dart';
 import 'package:obscura_pro/features/crop/ratio.dart';
+import 'package:obscura_pro/features/viewer/obscura.dart';
 import 'package:obscura_pro/features/viewer/viewer_screen.dart';
+import 'package:obscura_pro/infra/geometry/view_transform.dart';
 import 'package:obscura_pro/infra/preview/preview_extractor.dart';
 
 /// Crop mode, as a photographer meets it.
@@ -59,6 +61,73 @@ void main() {
     expect(_text(tester, 'crop-size'), '1080 × 1080 px');
   });
 
+  testWidgets('the frame follows the pointer, upright', (tester) async {
+    final container = await _pump(tester);
+    container.read(cropRectProvider.notifier).chooseRatio(CropRatio.square, 3 / 2);
+    await tester.pump();
+    final before = container.read(cropRectProvider)!.rect;
+
+    await _dragFrame(tester, const Offset(120, 0));
+
+    expect(container.read(cropRectProvider)!.rect.left, greaterThan(before.left));
+  });
+
+  testWidgets('a frame chosen under obscura cuts what was framed',
+      (tester) async {
+    final container = await _pump(tester);
+    container.read(obscuraProvider.notifier).toggle();
+    container.read(cropRectProvider.notifier).chooseRatio(CropRatio.square, 3 / 2);
+    await tester.pump();
+    final before = container.read(cropRectProvider)!.rect;
+
+    await _dragFrame(tester, const Offset(120, 0));
+
+    // The photograph is upside down, so dragging the frame to the right moves
+    // it to the *left* of the picture being cut. The stored rectangle stays in
+    // upright space -- which is what makes the exported file the right way up
+    // whichever way the photographer was looking -- and it is that rectangle
+    // that has to follow the subject the frame was put around. Before this,
+    // the export came back as the opposite corner of the photograph.
+    final after = container.read(cropRectProvider)!.rect;
+    expect(after.left, lessThan(before.left));
+    expect(after.width, closeTo(before.width, 1e-9));
+  });
+
+  testWidgets('a corner grabbed under obscura is the corner that moves',
+      (tester) async {
+    final container = await _pump(tester);
+    container.read(obscuraProvider.notifier).toggle();
+    container.read(cropRectProvider.notifier).chooseRatio(CropRatio.square, 3 / 2);
+    await tester.pump();
+    final before = container.read(cropRectProvider)!.rect;
+
+    // Where the rectangle's top-left corner is actually drawn once the picture
+    // is turned: the bottom-right of the screen. Pulling that handle inwards
+    // has to shrink the frame rather than resize the corner on the other side
+    // of the picture.
+    final canvas = tester.getRect(find.byKey(const Key('crop-canvas')));
+    final transform = ViewTransform(
+      imageSize: const Size(1500, 1000),
+      viewport: canvas.size,
+      obscura: true,
+    );
+    // A pixel inside the canvas: the corner sits on its very edge, and a
+    // pointer exactly on the boundary lands outside the box.
+    final handle = canvas.topLeft +
+        transform.normalizedToScreen(before.topLeft) -
+        const Offset(1, 1);
+    final gesture = await tester.startGesture(handle);
+    // Inwards, which on screen is up and to the left of that handle.
+    for (var i = 0; i < 8; i++) {
+      await gesture.moveBy(const Offset(-12, 0));
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pump();
+
+    expect(container.read(cropRectProvider)!.rect.width, lessThan(before.width));
+  });
+
   testWidgets('changing the frame takes the applied view back off',
       (tester) async {
     await _pump(tester);
@@ -74,6 +143,21 @@ void main() {
     expect(find.byKey(const Key('crop-applied')), findsNothing);
     expect(_text(tester, 'crop-size'), '1620 × 911 px');
   });
+}
+
+/// Drags the frame from the middle of the canvas, in a run of small moves.
+///
+/// Small moves because a pan is not recognised until the pointer has travelled
+/// the touch slop, and a single event is spent being recognised rather than
+/// being applied.
+Future<void> _dragFrame(WidgetTester tester, Offset by) async {
+  final gesture = await tester.startGesture(const Offset(600, 300));
+  for (var i = 0; i < 8; i++) {
+    await gesture.moveBy(by / 8);
+    await tester.pump();
+  }
+  await gesture.up();
+  await tester.pump();
 }
 
 String _text(WidgetTester tester, String key) =>

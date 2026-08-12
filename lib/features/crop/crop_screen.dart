@@ -137,6 +137,15 @@ class _CropScreenState extends ConsumerState<CropScreen> {
   /// The corner being dragged, or null while the whole rectangle is moving.
   CropCorner? _grabbed;
 
+  /// The corner the pointer went down on, taken before any gesture is
+  /// recognised.
+  ///
+  /// A pan is not a pan until the pointer has travelled the touch slop, and by
+  /// then it is some twenty pixels from the handle it was pressed on — further
+  /// than the hit area. Corner drags that started exactly on a handle came out
+  /// as moves of the whole frame.
+  CropCorner? _pressed;
+
   double get _frameAspect {
     final stream = widget.photo.viewerPreview ?? widget.photo.gridPreview;
     final width = (stream?.width ?? 3).toDouble();
@@ -180,12 +189,21 @@ class _CropScreenState extends ConsumerState<CropScreen> {
   /// frame instead — which is what this used to do — left the overlay, the
   /// corner hit-testing and the export each working in a slightly different
   /// space the moment the horizon was pulled off zero.
+  ///
+  /// It carries obscura for the same reason, and that omission was a bug worth
+  /// naming: the picture was drawn turned and the rectangle was measured
+  /// upright, so a frame chosen around the subject at the top of the screen
+  /// came out of the export as the opposite corner of the photograph. Obscura
+  /// belongs in this chain and nowhere else (KTD-12) — the stored rectangle
+  /// stays in upright normalized space, which is what keeps the exported file
+  /// the right way up whichever way the photographer was looking at it.
   ViewTransform _transformFor(double angleDegrees) => ViewTransform(
         imageSize: Size(
           CropRect.straightenedAspect(_frameAspect, angleDegrees) * 1000,
           1000,
         ),
         viewport: _viewport,
+        obscura: ref.read(obscuraProvider),
       );
 
   @override
@@ -265,21 +283,21 @@ class _CropScreenState extends ConsumerState<CropScreen> {
   /// The hit area is larger than the drawn handle, per the design system: a
   /// crop is adjusted by feel, and demanding precise pointing to start a
   /// precise adjustment is the wrong way round.
-  void _grab(DragStartDetails details) {
+  CropCorner? _cornerAt(Offset point) {
     final crop = ref.read(cropRectProvider);
-    if (crop == null || _applied) return;
+    if (crop == null || _applied) return null;
     const slop = ObscuraStrokes.handleHitSize * 2.5;
     final transform = _transformFor(crop.angleDegrees);
 
-    _grabbed = null;
     for (final corner in CropCorner.values) {
       final at = transform.normalizedToScreen(corner.of(crop.rect));
-      if ((at - details.localPosition).distance <= slop) {
-        _grabbed = corner;
-        break;
-      }
+      if ((at - point).distance <= slop) return corner;
     }
-    setState(() {});
+    return null;
+  }
+
+  void _grab(DragStartDetails details) {
+    setState(() => _grabbed = _pressed ?? _cornerAt(details.localPosition));
   }
 
   void _drag(DragUpdateDetails details) {
@@ -299,16 +317,25 @@ class _CropScreenState extends ConsumerState<CropScreen> {
       return;
     }
 
+    // The delta goes through the transform rather than being divided by the
+    // fitted rectangle: under obscura the photograph is turned, and a drag to
+    // the right moves the frame to the *left* of the picture it is cutting.
+    final from =
+        transform.screenToNormalized(details.localPosition - details.delta);
+    final to = transform.screenToNormalized(details.localPosition);
     ref.read(cropRectProvider.notifier).moveTo(
           Offset(
-            crop.rect.left + details.delta.dx / rect.width,
-            crop.rect.top + details.delta.dy / rect.height,
+            crop.rect.left + (to.dx - from.dx),
+            crop.rect.top + (to.dy - from.dy),
           ),
           _frameAspect,
         );
   }
 
-  void _release(DragEndDetails details) => setState(() => _grabbed = null);
+  void _release(DragEndDetails details) {
+    _pressed = null;
+    setState(() => _grabbed = null);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -356,33 +383,40 @@ class _CropScreenState extends ConsumerState<CropScreen> {
                       fitted: _transformFor(crop?.angleDegrees ?? 0).fittedRect,
                     );
 
-                    return GestureDetector(
-                      onPanStart: _grab,
-                      onPanUpdate: _drag,
-                      onPanEnd: _release,
-                      child: _applied && crop != null
-                          ? _Cropped(
-                              key: const Key('crop-applied'),
-                              rect: _transformFor(crop.angleDegrees)
-                                  .screenRectOf(crop.rect),
-                              viewport: _viewport,
-                              child: frame,
-                            )
-                          : Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                frame,
-                                if (crop != null)
-                                  CustomPaint(
-                                    painter: _CropOverlayPainter(
-                                      crop: crop,
-                                      transform:
-                                          _transformFor(crop.angleDegrees),
-                                      grabbed: _grabbed,
+                    return Listener(
+                      // Where the pointer went down, which is the only place a
+                      // handle can honestly be looked for. See [_pressed].
+                      onPointerDown: (event) =>
+                          _pressed = _cornerAt(event.localPosition),
+                      child: GestureDetector(
+                        key: const Key('crop-canvas'),
+                        onPanStart: _grab,
+                        onPanUpdate: _drag,
+                        onPanEnd: _release,
+                        child: _applied && crop != null
+                            ? _Cropped(
+                                key: const Key('crop-applied'),
+                                rect: _transformFor(crop.angleDegrees)
+                                    .screenRectOf(crop.rect),
+                                viewport: _viewport,
+                                child: frame,
+                              )
+                            : Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  frame,
+                                  if (crop != null)
+                                    CustomPaint(
+                                      painter: _CropOverlayPainter(
+                                        crop: crop,
+                                        transform:
+                                            _transformFor(crop.angleDegrees),
+                                        grabbed: _grabbed,
+                                      ),
                                     ),
-                                  ),
-                              ],
-                            ),
+                                ],
+                              ),
+                      ),
                     );
                   },
                 ),
