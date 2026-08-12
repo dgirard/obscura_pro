@@ -106,16 +106,20 @@ class ExportService {
       return ExportFailed('$error');
     }
 
-    // Upright first, then crop. The rectangle is expressed over the photograph
-    // as the photographer sees it, and applying it to sensor-orientation pixels
-    // would crop a portrait frame along the wrong axis entirely.
+    // Upright, then straightened, then cropped — the same order the screen
+    // showed. The rectangle is expressed over the photograph as the
+    // photographer sees it, and applying it to sensor-orientation pixels would
+    // crop a portrait frame along the wrong axis entirely.
     final upright = _applyOrientation(decoded, photo.orientation);
+    final straightened = crop.angleDegrees == 0
+        ? upright
+        : img.copyRotate(upright, angle: -crop.angleDegrees);
     final pixels = crop.toPixels(
-      Size(upright.width.toDouble(), upright.height.toDouble()),
+      Size(straightened.width.toDouble(), straightened.height.toDouble()),
     );
 
     final cropped = img.copyCrop(
-      upright,
+      straightened,
       x: pixels.left.round(),
       y: pixels.top.round(),
       width: pixels.width.round(),

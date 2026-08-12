@@ -94,11 +94,29 @@ final class CropRect {
     required this.rect,
     required this.ratio,
     required this.orientation,
+    this.angleDegrees = 0,
   });
 
+  /// In the normalized space of the *straightened* frame, not the stored one.
+  ///
+  /// Once an angle is applied the picture the user is composing on is the
+  /// turned one, and expressing the crop against the original would mean every
+  /// handle drag had to be un-rotated before it meant anything.
   final Rect rect;
+
   final CropRatio ratio;
   final CropOrientation orientation;
+
+  /// Straightening, in degrees. Positive turns the horizon clockwise.
+  ///
+  /// Small by nature — this is for a horizon a degree or two off, not for
+  /// turning a picture on its side, which is what EXIF orientation is for.
+  final double angleDegrees;
+
+  /// How far a horizon may be pulled. Beyond this the usable area collapses
+  /// faster than the correction helps, and the user wanted a different frame
+  /// rather than a straighter one.
+  static const double maxAngleDegrees = 15;
 
   /// The largest rectangle of this ratio that fits inside the whole frame,
   /// centred. What crop mode starts from.
@@ -108,33 +126,44 @@ final class CropRect {
     required double frameAspect,
     required CropRatio ratio,
     CropOrientation orientation = CropOrientation.landscape,
+    double angleDegrees = 0,
   }) {
+    final safe = safeArea(frameAspect: frameAspect, degrees: angleDegrees);
     final wanted = ratio.aspectIn(orientation);
     if (frameAspect <= 0 || wanted <= 0) {
       return CropRect(
-        rect: const Rect.fromLTWH(0, 0, 1, 1),
+        rect: safe,
         ratio: ratio,
         orientation: orientation,
+        angleDegrees: angleDegrees,
       );
     }
 
     // Normalized space is not square, so a ratio expressed there has to be
     // divided by the frame's own — forgetting that is the classic way to get a
     // crop that is subtly the wrong shape on anything but a square photograph.
-    final double width;
-    final double height;
-    if (wanted >= frameAspect) {
-      width = 1;
-      height = frameAspect / wanted;
-    } else {
-      height = 1;
-      width = wanted / frameAspect;
+    final canvasAspect = straightenedAspect(frameAspect, angleDegrees);
+    final normalized = wanted / canvasAspect;
+
+    // Fitted into the safe area rather than into the whole canvas, so a
+    // straightened frame never starts out overlapping the empty corners.
+    double width = safe.width;
+    double height = width / normalized;
+    if (height > safe.height) {
+      height = safe.height;
+      width = height * normalized;
     }
 
     return CropRect(
-      rect: Rect.fromLTWH((1 - width) / 2, (1 - height) / 2, width, height),
+      rect: Rect.fromLTWH(
+        safe.left + (safe.width - width) / 2,
+        safe.top + (safe.height - height) / 2,
+        width,
+        height,
+      ),
       ratio: ratio,
       orientation: orientation,
+      angleDegrees: angleDegrees,
     );
   }
 
@@ -167,23 +196,107 @@ final class CropRect {
     );
   }
 
-  /// Moved so it lies inside the frame, keeping its size.
+  /// Moved so it lies inside the photograph, keeping its size where it can.
   ///
   /// Slid rather than shrunk: a drag that leaves the edge should stop at the
-  /// edge, not quietly change the shape the user chose.
-  CropRect clampedToFrame() {
-    final width = math.min(rect.width, 1.0);
-    final height = math.min(rect.height, 1.0);
+  /// edge, not quietly change the shape the user chose. Shrinking happens only
+  /// when the crop cannot fit at all — after a straightening angle has eaten
+  /// into the usable area — and then it shrinks along both axes together so the
+  /// ratio survives.
+  CropRect clampedToFrame({double frameAspect = 0}) {
+    final safe = frameAspect <= 0
+        ? const Rect.fromLTWH(0, 0, 1, 1)
+        : safeArea(frameAspect: frameAspect, degrees: angleDegrees);
+
+    var width = rect.width;
+    var height = rect.height;
+    final shrink = math.min(
+      width > safe.width ? safe.width / width : 1.0,
+      height > safe.height ? safe.height / height : 1.0,
+    );
+    width *= shrink;
+    height *= shrink;
+
     return CropRect(
       rect: Rect.fromLTWH(
-        rect.left.clamp(0.0, 1 - width),
-        rect.top.clamp(0.0, 1 - height),
+        rect.left.clamp(safe.left, math.max(safe.left, safe.right - width)),
+        rect.top.clamp(safe.top, math.max(safe.top, safe.bottom - height)),
         width,
         height,
       ),
       ratio: ratio,
       orientation: orientation,
+      angleDegrees: angleDegrees,
     );
+  }
+
+  /// The same crop with the horizon pulled to [degrees].
+  ///
+  /// Rebuilt rather than adjusted: the canvas changes shape with the angle, so
+  /// a rectangle carried across would mean something different from what it
+  /// meant a moment ago.
+  CropRect straightenedTo(double degrees, {required double frameAspect}) =>
+      CropRect.largestIn(
+        frameAspect: frameAspect,
+        ratio: ratio,
+        orientation: orientation,
+        angleDegrees: degrees.clamp(-maxAngleDegrees, maxAngleDegrees),
+      );
+
+  /// The width over height of the canvas a frame of [frameAspect] occupies once
+  /// turned by [degrees].
+  ///
+  /// Turning a rectangle grows its bounding box, and that box — corners and all
+  /// — is what the export produces and the screen shows.
+  static double straightenedAspect(double frameAspect, double degrees) {
+    if (frameAspect <= 0) return 1;
+    final radians = degrees * math.pi / 180;
+    final sin = math.sin(radians).abs();
+    final cos = math.cos(radians).abs();
+    final width = frameAspect * cos + sin;
+    final height = frameAspect * sin + cos;
+    return height <= 0 ? 1 : width / height;
+  }
+
+  /// The part of the turned canvas that is actually photograph.
+  ///
+  /// Turning leaves empty corners, and a crop allowed to reach them would
+  /// export a picture with black wedges in it. This is the largest centred
+  /// rectangle of the frame's own proportions that fits inside the turned
+  /// original — the standard construction — expressed in the turned canvas's
+  /// normalized coordinates.
+  static Rect safeArea({required double frameAspect, required double degrees}) {
+    if (frameAspect <= 0 || degrees == 0) {
+      return const Rect.fromLTWH(0, 0, 1, 1);
+    }
+    final radians = degrees.abs() * math.pi / 180;
+    final sin = math.sin(radians);
+    final cos = math.cos(radians);
+
+    final w = frameAspect;
+    const h = 1.0;
+    final shortSide = math.min(w, h);
+    final longSide = math.max(w, h);
+
+    final double insetW;
+    final double insetH;
+    if (shortSide <= 2 * sin * cos * longSide || (sin - cos).abs() < 1e-10) {
+      // Past this angle the inscribed rectangle is bounded by half the short
+      // side rather than by both edges, and the general formula stops holding.
+      final half = 0.5 * shortSide;
+      insetW = w <= h ? half / sin : half / cos;
+      insetH = w <= h ? half / cos : half / sin;
+    } else {
+      final cos2 = cos * cos - sin * sin;
+      insetW = (w * cos - h * sin) / cos2;
+      insetH = (h * cos - w * sin) / cos2;
+    }
+
+    final canvasW = w * cos + h * sin;
+    final canvasH = w * sin + h * cos;
+    final width = (insetW / canvasW).clamp(0.0, 1.0);
+    final height = (insetH / canvasH).clamp(0.0, 1.0);
+    return Rect.fromLTWH((1 - width) / 2, (1 - height) / 2, width, height);
   }
 
   /// The smallest a crop may become, as a fraction of the frame.
@@ -199,8 +312,10 @@ final class CropRect {
   /// photographer chose is *not* the ratio of the stored rectangle. Every
   /// resize has to go through this or it silently produces a shape nobody asked
   /// for.
-  double normalizedAspect(double frameAspect) =>
-      frameAspect <= 0 ? 1 : ratio.aspectIn(orientation) / frameAspect;
+  double normalizedAspect(double frameAspect) {
+    final canvas = straightenedAspect(frameAspect, angleDegrees);
+    return canvas <= 0 ? 1 : ratio.aspectIn(orientation) / canvas;
+  }
 
   /// The crop after [corner] has been dragged to [pointer].
   ///
@@ -256,7 +371,8 @@ final class CropRect {
       rect: Rect.fromLTWH(left, top, width, height),
       ratio: ratio,
       orientation: orientation,
-    ).clampedToFrame();
+      angleDegrees: angleDegrees,
+    ).clampedToFrame(frameAspect: frameAspect);
   }
 
   CropRect withRatio(CropRatio next, {required double frameAspect}) =>
@@ -264,6 +380,7 @@ final class CropRect {
         frameAspect: frameAspect,
         ratio: next,
         orientation: next.hasOrientations ? orientation : CropOrientation.landscape,
+        angleDegrees: angleDegrees,
       );
 
   /// Turns the frame between portrait and landscape. A no-op on the square,
@@ -276,6 +393,7 @@ final class CropRect {
       orientation: orientation == CropOrientation.landscape
           ? CropOrientation.portrait
           : CropOrientation.landscape,
+      angleDegrees: angleDegrees,
     );
   }
 
@@ -284,10 +402,11 @@ final class CropRect {
       other is CropRect &&
       other.rect == rect &&
       other.ratio == ratio &&
-      other.orientation == orientation;
+      other.orientation == orientation &&
+      other.angleDegrees == angleDegrees;
 
   @override
-  int get hashCode => Object.hash(rect, ratio, orientation);
+  int get hashCode => Object.hash(rect, ratio, orientation, angleDegrees);
 
   @override
   String toString() => 'CropRect(${ratio.label} ${orientation.name}, $rect)';

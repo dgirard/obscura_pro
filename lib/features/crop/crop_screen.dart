@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -50,6 +51,12 @@ class CropRectNotifier extends Notifier<CropRect?> {
   void turn(double frameAspect) {
     final current = state;
     if (current != null) state = current.turned(frameAspect: frameAspect);
+  }
+
+  void straighten(double degrees, double frameAspect) {
+    final current = state;
+    if (current == null) return;
+    state = current.straightenedTo(degrees, frameAspect: frameAspect);
   }
 
   void resize(CropCorner corner, Offset pointer, double frameAspect) {
@@ -251,7 +258,11 @@ class _CropScreenState extends ConsumerState<CropScreen> {
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
-                          _Frame(photo: widget.photo, obscura: obscura),
+                          _Frame(
+                            photo: widget.photo,
+                            obscura: obscura,
+                            angleDegrees: crop?.angleDegrees ?? 0,
+                          ),
                           if (crop != null)
                             CustomPaint(
                               painter: _CropOverlayPainter(
@@ -284,10 +295,15 @@ class _CropScreenState extends ConsumerState<CropScreen> {
 }
 
 class _Frame extends ConsumerWidget {
-  const _Frame({required this.photo, required this.obscura});
+  const _Frame({
+    required this.photo,
+    required this.obscura,
+    required this.angleDegrees,
+  });
 
   final PhotoEntity photo;
   final bool obscura;
+  final double angleDegrees;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -298,10 +314,17 @@ class _Frame extends ConsumerWidget {
     );
 
     return image.when(
-      data: (decoded) => OrientedImage(
-        key: const Key('crop-image'),
-        image: decoded,
-        orientation: DisplayOrientation.of(photo.orientation, obscura: obscura),
+      // The turn is a canvas transform on the screen and a real rotation only
+      // at export. Rotating pixels to preview a one-degree correction would
+      // cost a full re-encode per drag of the slider.
+      data: (decoded) => Transform.rotate(
+        angle: angleDegrees * math.pi / 180,
+        child: OrientedImage(
+          key: const Key('crop-image'),
+          image: decoded,
+          orientation:
+              DisplayOrientation.of(photo.orientation, obscura: obscura),
+        ),
       ),
       error: (_, _) => const SizedBox.expand(),
       loading: () => const SizedBox.expand(),
@@ -419,6 +442,13 @@ class _Controls extends ConsumerWidget {
                   .chooseRatio(CropRatio.values[i], frameAspect),
             ),
           const SizedBox(width: ObscuraSpacing.overlayPadding),
+          _Straighten(
+            degrees: crop?.angleDegrees ?? 0,
+            onChanged: (value) => ref
+                .read(cropRectProvider.notifier)
+                .straighten(value, frameAspect),
+          ),
+          const SizedBox(width: ObscuraSpacing.overlayPadding),
           IconButton(
             key: const Key('crop-turn'),
             tooltip: 'Portrait / paysage (R)',
@@ -435,7 +465,7 @@ class _Controls extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.only(right: ObscuraSpacing.overlayPadding),
               child: Text(
-                'Glissez le cadre, tirez un coin pour resserrer',
+                'Glissez le cadre · tirez un coin pour resserrer',
                 style: ObscuraTypography.bodySmall
                     .copyWith(color: ObscuraColors.textSecondary),
               ),
@@ -470,6 +500,60 @@ class _Controls extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The horizon slider.
+///
+/// Capped at fifteen degrees each way, and it says so: beyond that the usable
+/// area collapses faster than the correction helps, and what the photographer
+/// wanted was a different frame rather than a straighter one.
+class _Straighten extends StatelessWidget {
+  const _Straighten({required this.degrees, required this.onChanged});
+
+  final double degrees;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.straighten, size: 16, color: ObscuraColors.textSecondary),
+        SizedBox(
+          width: 150,
+          child: Slider(
+            key: const Key('crop-straighten'),
+            value: degrees.clamp(
+              -CropRect.maxAngleDegrees,
+              CropRect.maxAngleDegrees,
+            ),
+            min: -CropRect.maxAngleDegrees,
+            max: CropRect.maxAngleDegrees,
+            // A tenth of a degree: finer than that is beyond what the eye can
+            // judge on a horizon, and coarser leaves it visibly off.
+            divisions: (CropRect.maxAngleDegrees * 20).round(),
+            activeColor: ObscuraColors.leicaRed,
+            onChanged: onChanged,
+          ),
+        ),
+        GestureDetector(
+          key: const Key('crop-straighten-reset'),
+          onTap: () => onChanged(0),
+          child: SizedBox(
+            width: 46,
+            child: Text(
+              '${degrees >= 0 ? '+' : ''}${degrees.toStringAsFixed(1)}°',
+              style: ObscuraTypography.monoData.copyWith(
+                color: degrees == 0
+                    ? ObscuraColors.textSecondary
+                    : ObscuraColors.textPrimary,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

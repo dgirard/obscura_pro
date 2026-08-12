@@ -229,4 +229,86 @@ void main() {
       expect(name, isNot(contains(':')));
     });
   });
+
+  group('straightening', () {
+    test('exports the turned pixels, not the stored ones', () async {
+      final subject = await photo();
+
+      final level = await service.export(
+        photo: subject,
+        crop: CropRect.largestIn(
+          frameAspect: 640 / 427,
+          ratio: CropRatio.threeTwo,
+        ),
+        folder: exports,
+      ) as ExportWritten;
+
+      final straightened = await service.export(
+        photo: subject,
+        crop: CropRect.largestIn(
+          frameAspect: 640 / 427,
+          ratio: CropRatio.threeTwo,
+          angleDegrees: 8,
+        ),
+        folder: exports,
+      ) as ExportWritten;
+
+      // Straightening costs pixels — the usable rectangle inside a turned frame
+      // is smaller — and an export that came out the same size would mean the
+      // angle had been recorded and then ignored.
+      expect(straightened.pixelWidth, lessThan(level.pixelWidth));
+      expect(straightened.pixelWidth, greaterThan(level.pixelWidth ~/ 2));
+    });
+
+    test('a straightened export keeps the ratio it was asked for', () async {
+      final subject = await photo();
+
+      final outcome = await service.export(
+        photo: subject,
+        crop: CropRect.largestIn(
+          frameAspect: 640 / 427,
+          ratio: CropRatio.square,
+          angleDegrees: 6,
+        ),
+        folder: exports,
+      ) as ExportWritten;
+
+      expect(
+        outcome.pixelWidth / outcome.pixelHeight,
+        closeTo(1, 0.01),
+      );
+    });
+
+    test('leaves no black corner in the exported picture', () async {
+      final subject = await photo();
+
+      final outcome = await service.export(
+        photo: subject,
+        crop: CropRect.largestIn(
+          frameAspect: 640 / 427,
+          ratio: CropRatio.threeTwo,
+          angleDegrees: 10,
+        ),
+        folder: exports,
+      ) as ExportWritten;
+
+      final decoded = img.decodeJpg(File(outcome.path).readAsBytesSync())!;
+      // The fixture is a colour ramp with no black anywhere, so any very dark
+      // corner would be the empty wedge a turn leaves behind — the one failure
+      // that makes straightening look broken rather than approximate.
+      for (final corner in [
+        (2, 2),
+        (decoded.width - 3, 2),
+        (2, decoded.height - 3),
+        (decoded.width - 3, decoded.height - 3),
+      ]) {
+        final pixel = decoded.getPixel(corner.$1, corner.$2);
+        expect(
+          pixel.r + pixel.g + pixel.b,
+          greaterThan(20),
+          reason: 'corner ${corner.$1},${corner.$2} is empty',
+        );
+      }
+    });
+  });
 }

@@ -368,4 +368,145 @@ void main() {
       );
     });
   });
+
+  group('straightening a horizon', () {
+    const frame = 3 / 2;
+
+    double visualAspect(CropRect c) =>
+        c.rect.width * CropRect.straightenedAspect(frame, c.angleDegrees) /
+        c.rect.height;
+
+    test('a turned frame occupies a larger canvas', () {
+      // Turning a rectangle grows its bounding box, and that box — corners and
+      // all — is what the export produces.
+      expect(CropRect.straightenedAspect(frame, 0), closeTo(frame, 1e-12));
+      expect(
+        CropRect.straightenedAspect(frame, 10),
+        lessThan(frame),
+        reason: 'the box grows more in height than in width for a wide frame',
+      );
+    });
+
+    test('the safe area is the whole frame when nothing is turned', () {
+      expect(
+        CropRect.safeArea(frameAspect: frame, degrees: 0),
+        const Rect.fromLTWH(0, 0, 1, 1),
+      );
+    });
+
+    test('the safe area shrinks as the angle grows, and stays centred', () {
+      var previous = 1.0;
+      for (final degrees in [1.0, 3.0, 7.0, 15.0]) {
+        final safe = CropRect.safeArea(frameAspect: frame, degrees: degrees);
+        final area = safe.width * safe.height;
+
+        expect(area, lessThan(previous), reason: '$degrees deg');
+        expect(safe.center.dx, closeTo(0.5, 1e-9));
+        expect(safe.center.dy, closeTo(0.5, 1e-9));
+        previous = area;
+      }
+    });
+
+    test('turning one way or the other costs the same', () {
+      expect(
+        CropRect.safeArea(frameAspect: frame, degrees: -6),
+        CropRect.safeArea(frameAspect: frame, degrees: 6),
+      );
+    });
+
+    test('a straightened crop starts inside the photograph, not the corners',
+        () {
+      for (final degrees in [-12.0, -4.0, 4.0, 12.0]) {
+        final crop = CropRect.largestIn(
+          frameAspect: frame,
+          ratio: CropRatio.threeTwo,
+          angleDegrees: degrees,
+        );
+        final safe = CropRect.safeArea(frameAspect: frame, degrees: degrees);
+
+        // A crop reaching the empty corners would export a photograph with
+        // black wedges in it, which is the whole difficulty of straightening.
+        expect(crop.rect.left, greaterThanOrEqualTo(safe.left - 1e-9),
+            reason: '$degrees deg');
+        expect(crop.rect.right, lessThanOrEqualTo(safe.right + 1e-9),
+            reason: '$degrees deg');
+        expect(crop.rect.top, greaterThanOrEqualTo(safe.top - 1e-9),
+            reason: '$degrees deg');
+        expect(crop.rect.bottom, lessThanOrEqualTo(safe.bottom + 1e-9),
+            reason: '$degrees deg');
+      }
+    });
+
+    test('the chosen ratio survives straightening', () {
+      for (final ratio in CropRatio.values) {
+        final crop = CropRect.largestIn(
+          frameAspect: frame,
+          ratio: ratio,
+          angleDegrees: 8,
+        );
+
+        expect(
+          visualAspect(crop),
+          closeTo(ratio.aspectIn(CropOrientation.landscape), 1e-6),
+          reason: ratio.label,
+        );
+      }
+    });
+
+    test('a resize on a straightened frame stays out of the corners', () {
+      final start = CropRect.largestIn(
+        frameAspect: frame,
+        ratio: CropRatio.square,
+        angleDegrees: 10,
+      );
+      final safe = CropRect.safeArea(frameAspect: frame, degrees: 10);
+
+      final pulled = start.resizedFrom(
+        corner: CropCorner.bottomRight,
+        pointer: const Offset(3, 3),
+        frameAspect: frame,
+      );
+
+      expect(pulled.rect.right, lessThanOrEqualTo(safe.right + 1e-6));
+      expect(pulled.rect.bottom, lessThanOrEqualTo(safe.bottom + 1e-6));
+      expect(pulled.angleDegrees, 10);
+    });
+
+    test('moving a straightened crop cannot slide it into a corner', () {
+      final start = CropRect.largestIn(
+        frameAspect: frame,
+        ratio: CropRatio.square,
+        angleDegrees: 12,
+      );
+      final safe = CropRect.safeArea(frameAspect: frame, degrees: 12);
+
+      final shoved = CropRect(
+        rect: Rect.fromLTWH(-0.5, -0.5, start.rect.width, start.rect.height),
+        ratio: start.ratio,
+        orientation: start.orientation,
+        angleDegrees: 12,
+      ).clampedToFrame(frameAspect: frame);
+
+      expect(shoved.rect.left, closeTo(safe.left, 1e-9));
+      expect(shoved.rect.top, closeTo(safe.top, 1e-9));
+    });
+
+    test('the angle is capped rather than allowed to eat the photograph', () {
+      final crop = CropRect.largestIn(frameAspect: frame, ratio: CropRatio.threeTwo);
+
+      expect(crop.straightenedTo(90, frameAspect: frame).angleDegrees,
+          CropRect.maxAngleDegrees);
+      expect(crop.straightenedTo(-90, frameAspect: frame).angleDegrees,
+          -CropRect.maxAngleDegrees);
+    });
+
+    test('straightening back to zero restores the full frame', () {
+      final crop = CropRect.largestIn(frameAspect: frame, ratio: CropRatio.threeTwo)
+          .straightenedTo(9, frameAspect: frame)
+          .straightenedTo(0, frameAspect: frame);
+
+      expect(crop.angleDegrees, 0);
+      expect(crop.rect, const Rect.fromLTWH(0, 0, 1, 1));
+    });
+  });
 }
