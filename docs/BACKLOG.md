@@ -1,0 +1,130 @@
+# Reste à faire
+
+What is not done, and why it is not done. Kept here rather than in commit
+messages so it can be argued with.
+
+The implementation plan
+(`docs/plans/2026-08-11-001-feat-obscura-pro-culling-app-plan.md`) is the
+authority for units U1–U14. This file holds everything the plan does not: work
+that was asked for later, verifications that need hardware, and gaps found by
+building the thing.
+
+---
+
+## Asked for, not yet built
+
+### An exports viewer
+Requested 2026-08-12. Today an export lands in
+`~/Pictures/Q3Culling/Exports/<date>/` and the only feedback is a filename in
+the crop bar. A photographer who has just made a decision about a frame should
+be able to see the result of it without leaving for the Finder.
+
+Wanted, roughly: a fourth sidebar destination listing what has been exported —
+by session, newest first — with the crop's ratio and pixel size, the ability to
+open one full-frame, to reveal it in the Finder, and to delete an export that
+was a mistake. The `crop_export` table already records every export with its
+photo, ratio, rectangle and path, so the data is there; nothing reads it back
+yet.
+
+Two things it must not do: pretend an export still exists when the user has
+moved or deleted it behind the app's back, and offer to "restore" an export to
+the card. Exports are Mac-side deliverables and the card is not their home.
+
+---
+
+## Owed verifications
+
+These need a real card and a person. None of them can be run headlessly, and
+several need a card whose contents are expendable.
+
+- **U7 — 60 fps grid scroll.** Release build, DevTools frame chart, a real
+  941-frame session. The cold-decode figures are measured; the scroll is not.
+- **U8 — next/previous under 100 ms perceived, zoom at 60 fps.** Release build.
+- **U9 — AE1 and AE2 on a sacrificial card.** A full culling session ending in
+  Empty Trash, and a card physically pulled during an Empty Trash in progress.
+  The fault-injection suite simulates the second at every step boundary, which
+  is not the same as doing it.
+- **U10 — Phase A exit benchmark.** A full session, then `ls -la@` on the volume
+  showing zero parasite files, then the card back in the Q3 booting with its
+  numbering intact. This is the gate the plan sets for Phase A being real.
+- **U11 — AE4.** Partly done: an exported file was checked and carries the right
+  model, date and ISO. Still to do on a real card end to end.
+
+---
+
+## Gaps found by building it
+
+Ordered by how much they would cost a user.
+
+### Marking does not survive a relaunch
+The grid and viewer record marks in memory (`markedForDeletionProvider`), and
+`TrashService` writes them to the database only when Empty Trash runs. Close the
+app halfway through culling 900 frames and the decisions are gone. The trash
+table and its state machine are built and tested; nothing has been wired to
+write a mark at the moment it is made.
+
+### The card must be picked again every launch
+`CardAccessService.reopenLastCard` exists, is tested, and is never called.
+Security-scoped bookmarks are minted on every open, so the machinery to reopen
+last session's card without the panel is present and unused.
+
+### A JPG-only card gets soft thumbnails
+A Q3 JPEG's only embedded preview is the 160 × 120 EXIF thumbnail, and its only
+larger source is the 39 Mpx frame — over the escalation budget. Fixing it needs
+a scaled JPEG decode (the DCT 1/2, 1/4, 1/8 modes the pure-Dart decoder does not
+expose), not a bigger budget. RAW+JPG and RAW-only cards are unaffected.
+
+### Durability is app-crash-safe, not power-loss-safe
+`F_FULLFSYNC`, directory `fsync` and `statfs` all need FFI to libc, which is not
+written. KTD-14 already states the honest claim and the code says so where it
+matters; what protects the data is the read-back-and-hash, not the flush.
+
+### The Inter font is named but not bundled
+`theme.dart` specifies it; the asset is not in the repository, so text falls
+back to the system font. Sizes, weights and tracking are already final.
+
+### No focus-visible treatment on crop controls
+Keyboard focus is invisible on the ratio buttons and the straighten slider. The
+design system defines a focus ring; it is not applied there.
+
+### An unsaved crop is lost on navigate-away
+Leaving crop mode without exporting discards the rectangle silently. Whether it
+should be kept per photograph is a product question, not a bug — but it is
+undecided rather than decided.
+
+---
+
+## Undecided, and waiting on you
+
+### What happens to video
+A real card carries `.MP4` files. The scan reports them as
+`unsupportedFiles` and shows nothing. A card reporting "941 photographs" while
+holding gigabytes of video is lying to someone deciding whether to reformat.
+Catalogue them, show them, or state plainly that they are ignored — all three
+are defensible; silence is not.
+
+### Settings
+No unit owns a settings screen, and three things now need one: the export
+folder, the Spotlight-indexing tradeoff (U10 states it and does nothing), and
+the choice between deferred marking and immediate move-to-Mac-trash, which
+`TrashService` implements and nothing exposes.
+
+### A key for the EXIF overlay
+The spec's keyboard table (section 5) assigns none, so it is a visible control
+only. `I` would be conventional.
+
+---
+
+## Not started
+
+- **U12** — the 30 Grammaire-du-cadre patterns as typed vector data.
+- **U13** — the layer canvas: placing, moving, resizing composition guides.
+- **U14** — the layers panel and per-photo persistence.
+
+---
+
+## Never run
+
+`ce-code-review` has not been run on any commit of this repository. Seventeen
+commits, ~6000 lines. It was offered several times and never chosen; noting it
+here so the choice stays visible rather than forgotten.
