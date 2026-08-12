@@ -99,6 +99,15 @@ class CropRectNotifier extends Notifier<CropRect?> {
 final cropRectProvider =
     NotifierProvider<CropRectNotifier, CropRect?>(CropRectNotifier.new);
 
+/// The export path itself.
+///
+/// A provider so a test can hold one in flight and look at the screen while it
+/// is: the interesting states of an export are the ones that only exist while
+/// it is running.
+final exportServiceProvider = Provider<ExportService>(
+  (ref) => const ExportService(),
+);
+
 /// Where exports go.
 final exportFolderProvider = FutureProvider<Directory>((ref) async {
   final chosen = ref.watch(settingsProvider).value?.exportFolder;
@@ -135,6 +144,9 @@ class _CropScreenState extends ConsumerState<CropScreen> {
   /// it is not a step in the export — the rectangle was always what got cut —
   /// it is the step that lets a photographer see what they are about to get.
   bool _applied = false;
+
+  /// Which step the export in flight has reached, or null when none is.
+  ExportStage? _stage;
 
   /// The corner being dragged, or null while the whole rectangle is moving.
   CropCorner? _grabbed;
@@ -227,6 +239,8 @@ class _CropScreenState extends ConsumerState<CropScreen> {
     setState(() {
       _busy = true;
       _failure = null;
+      _lastExport = null;
+      _stage = null;
     });
 
     // Everything from here is guarded. `export` reports the failures it can
@@ -237,15 +251,19 @@ class _CropScreenState extends ConsumerState<CropScreen> {
     final ExportOutcome outcome;
     try {
       final folder = await ref.read(exportFolderProvider.future);
-      outcome = await const ExportService().export(
-        photo: widget.photo,
-        crop: crop,
-        folder: folder,
-      );
+      outcome = await ref.read(exportServiceProvider).export(
+            photo: widget.photo,
+            crop: crop,
+            folder: folder,
+            onStage: (stage) {
+              if (mounted) setState(() => _stage = stage);
+            },
+          );
     } on Object catch (error) {
       if (mounted) {
         setState(() {
           _busy = false;
+          _stage = null;
           _failure = 'export impossible : $error';
         });
       }
@@ -255,6 +273,7 @@ class _CropScreenState extends ConsumerState<CropScreen> {
 
     setState(() {
       _busy = false;
+      _stage = null;
       switch (outcome) {
         case ExportWritten(:final path, :final pixelWidth, :final pixelHeight):
           _lastExport = '${path.split('/').last}  ·  '
@@ -449,6 +468,7 @@ class _CropScreenState extends ConsumerState<CropScreen> {
               _Controls(
                 crop: crop,
                 busy: _busy,
+                stage: _stage,
                 applied: _applied,
                 lastExport: _lastExport,
                 failure: _failure,
@@ -710,6 +730,7 @@ class _Controls extends ConsumerWidget {
   const _Controls({
     required this.crop,
     required this.busy,
+    required this.stage,
     required this.applied,
     required this.lastExport,
     required this.failure,
@@ -722,6 +743,10 @@ class _Controls extends ConsumerWidget {
 
   final CropRect? crop;
   final bool busy;
+
+  /// Where the export in flight has got to, or null when none is.
+  final ExportStage? stage;
+
   final bool applied;
   final String? lastExport;
   final String? failure;
@@ -737,11 +762,29 @@ class _Controls extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Container(
-      padding: const EdgeInsets.all(ObscuraSpacing.overlayPadding),
       decoration: const BoxDecoration(
         color: ObscuraColors.elevated,
         border: Border(top: BorderSide(color: ObscuraColors.border)),
       ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Along the top edge of the bar, where the button that started it is:
+          // an export is seconds of work on a Q3 frame, and seconds with
+          // nothing moving are indistinguishable from a hang.
+          SizedBox(
+            height: ObscuraStrokes.selection,
+            child: busy
+                ? const LinearProgressIndicator(
+                    key: Key('crop-progress'),
+                    minHeight: ObscuraStrokes.selection,
+                    color: ObscuraColors.statusExport,
+                    backgroundColor: ObscuraColors.surfaceContainerLowest,
+                  )
+                : null,
+          ),
+          Padding(
+            padding: const EdgeInsets.all(ObscuraSpacing.overlayPadding),
       // Three groups on one line while there is room for them, and stacked
       // when there is not. A single row cannot do that: the bar carries six
       // ratios, a slider and three buttons, and on a narrow window the flex
@@ -824,7 +867,32 @@ class _Controls extends ConsumerWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (failure != null)
+              if (busy)
+                Padding(
+                  padding:
+                      const EdgeInsets.only(right: ObscuraSpacing.controlGap),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: ObscuraColors.statusExport,
+                        ),
+                      ),
+                      const SizedBox(width: ObscuraSpacing.controlGap),
+                      Text(
+                        _stageLabel(stage),
+                        key: const Key('crop-stage'),
+                        style: ObscuraTypography.bodySmall
+                            .copyWith(color: ObscuraColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                )
+              else if (failure != null)
                 Padding(
                   padding:
                       const EdgeInsets.only(right: ObscuraSpacing.controlGap),
@@ -840,12 +908,26 @@ class _Controls extends ConsumerWidget {
                 Padding(
                   padding:
                       const EdgeInsets.only(right: ObscuraSpacing.controlGap),
-                  child: Text(
-                    'Exporté : $lastExport',
-                    key: const Key('crop-exported'),
-                    maxLines: 2,
-                    style: ObscuraTypography.monoData
-                        .copyWith(color: ObscuraColors.textSecondary),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // The finish, said in the colour the design system keeps
+                      // for exports. A line that appears in the same grey as the
+                      // hint beside it is a line nobody notices arriving.
+                      const Icon(
+                        Icons.check_circle_outline,
+                        size: 14,
+                        color: ObscuraColors.statusExport,
+                      ),
+                      const SizedBox(width: ObscuraSpacing.controlGap / 2),
+                      Text(
+                        'Exporté : $lastExport',
+                        key: const Key('crop-exported'),
+                        maxLines: 2,
+                        style: ObscuraTypography.monoData
+                            .copyWith(color: ObscuraColors.statusExport),
+                      ),
+                    ],
                   ),
                 ),
               TextButton(onPressed: onClose, child: const Text('Fermer')),
@@ -875,9 +957,19 @@ class _Controls extends ConsumerWidget {
             ],
           ),
         ],
+            ),
+          ),
+        ],
       ),
     );
   }
+
+  static String _stageLabel(ExportStage? stage) => switch (stage) {
+        ExportStage.reading => 'Lecture de la photographie…',
+        ExportStage.rendering => 'Recadrage…',
+        ExportStage.writing => 'Écriture du fichier…',
+        null => 'Export…',
+      };
 }
 
 /// The horizon slider.

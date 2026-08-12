@@ -39,6 +39,49 @@ void main() {
       CropRect.largestIn(frameAspect: frameAspect, ratio: ratio);
 
   group('what the export writes', () {
+    test('reports each step as it begins', () async {
+      final subject = await photo();
+      final stages = <ExportStage>[];
+
+      await service.export(
+        photo: subject,
+        crop: cropOf(CropRatio.square),
+        folder: exports,
+        onStage: stages.add,
+      );
+
+      // In order, and each one before the work it names: the screen shows them
+      // while they run, and a step announced after it finished would be a
+      // progress line that is always one behind.
+      expect(stages, [
+        ExportStage.reading,
+        ExportStage.rendering,
+        ExportStage.writing,
+      ]);
+    });
+
+    test('stops reporting where it stops working', () async {
+      final subject = await photo();
+      final stages = <ExportStage>[];
+
+      // No readable stream: nothing is read, nothing is cut, nothing is
+      // written, and the progress line must not claim otherwise.
+      final outcome = await service.export(
+        photo: PhotoEntity(
+          radical: subject.radical,
+          folder: subject.folder,
+          key: subject.key,
+          files: subject.files,
+        ),
+        crop: cropOf(CropRatio.square),
+        folder: exports,
+        onStage: stages.add,
+      );
+
+      expect(outcome, isA<ExportFailed>());
+      expect(stages, isEmpty);
+    });
+
     test('produces a decodable JPEG of the cropped dimensions', () async {
       final subject = await photo();
 

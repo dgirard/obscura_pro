@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -7,6 +9,7 @@ import 'package:obscura_pro/app/theme.dart';
 import 'package:obscura_pro/features/catalog/photo_entity.dart';
 import 'package:obscura_pro/features/catalog/stable_key.dart';
 import 'package:obscura_pro/features/crop/crop_screen.dart';
+import 'package:obscura_pro/features/crop/export_service.dart';
 import 'package:obscura_pro/features/crop/ratio.dart';
 import 'package:obscura_pro/features/layers/layer_controller.dart';
 import 'package:obscura_pro/features/layers/layer_painter.dart';
@@ -129,6 +132,57 @@ void main() {
     expect(painter.transform.obscura, isTrue);
   });
 
+  testWidgets('says what the export is doing, and that it is done',
+      (tester) async {
+    final service = _SlowExport();
+    await _pump(tester, exportService: service);
+
+    // Nothing moving yet.
+    expect(find.byKey(const Key('crop-progress')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('crop-export')));
+    await tester.pump();
+    await tester.pump();
+
+    // A Q3 frame takes seconds to read, cut and encode; seconds with nothing
+    // moving are indistinguishable from a hang.
+    expect(find.byKey(const Key('crop-progress')), findsOneWidget);
+    expect(_text(tester, 'crop-stage'), 'Lecture de la photographie…');
+
+    service.reach(ExportStage.rendering);
+    await tester.pump();
+    expect(_text(tester, 'crop-stage'), 'Recadrage…');
+
+    service.reach(ExportStage.writing);
+    await tester.pump();
+    expect(_text(tester, 'crop-stage'), 'Écriture du fichier…');
+
+    service.finish();
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const Key('crop-progress')), findsNothing);
+    expect(find.byKey(const Key('crop-stage')), findsNothing);
+    expect(_text(tester, 'crop-exported'), contains('L1000001_3x2_01.jpg'));
+    expect(_text(tester, 'crop-exported'), contains('4000 × 2667 px'));
+  });
+
+  testWidgets('a refused export says so instead', (tester) async {
+    final service = _SlowExport(failure: 'la carte a été retirée');
+    await _pump(tester, exportService: service);
+
+    await tester.tap(find.byKey(const Key('crop-export')));
+    await tester.pump();
+    await tester.pump();
+    service.finish();
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const Key('crop-progress')), findsNothing);
+    expect(_text(tester, 'crop-failure'), 'la carte a été retirée');
+    expect(find.byKey(const Key('crop-exported')), findsNothing);
+  });
+
   testWidgets('the frame follows the pointer, upright', (tester) async {
     final container = await _pump(tester);
     container.read(cropRectProvider.notifier).chooseRatio(CropRatio.square, 3 / 2);
@@ -231,7 +285,11 @@ Future<void> _dragFrame(WidgetTester tester, Offset by) async {
 String _text(WidgetTester tester, String key) =>
     tester.widget<Text>(find.byKey(Key(key))).data!;
 
-Future<ProviderContainer> _pump(WidgetTester tester, {double width = 1200}) async {
+Future<ProviderContainer> _pump(
+  WidgetTester tester, {
+  double width = 1200,
+  ExportService? exportService,
+}) async {
   tester.view.physicalSize = Size(width, 800);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -242,6 +300,14 @@ Future<ProviderContainer> _pump(WidgetTester tester, {double width = 1200}) asyn
       overrides: [
         fullPreviewProvider.overrideWith((ref, request) => _image()),
         layerRepositoryProvider.overrideWithValue(InMemoryLayerStore()),
+        if (exportService != null) ...[
+          exportServiceProvider.overrideWithValue(exportService),
+          // A widget test has no application-support directory to resolve the
+          // real export folder in, and the stand-in service never touches it.
+          exportFolderProvider.overrideWith(
+            (ref) async => Directory('/tmp/obscura-test-exports'),
+          ),
+        ],
       ],
       child: Consumer(
         builder: (context, ref, _) {
@@ -287,3 +353,42 @@ PhotoEntity _photo() => PhotoEntity(
         height: 1080,
       ),
     );
+
+/// An export that goes exactly as far as the test tells it to.
+class _SlowExport implements ExportService {
+  _SlowExport({this.failure});
+
+  final String? failure;
+  final Completer<ExportOutcome> _done = Completer();
+  void Function(ExportStage)? _onStage;
+
+  void reach(ExportStage stage) => _onStage?.call(stage);
+
+  void finish() => _done.complete(
+        failure == null
+            ? const ExportWritten(
+                path: '/Users/x/Pictures/Q3Culling/Exports/2026-08-12/'
+                    'L1000001_3x2_01.jpg',
+                pixelWidth: 4000,
+                pixelHeight: 2667,
+                bytes: 2048,
+              )
+            : ExportFailed(failure!),
+      );
+
+  @override
+  int get quality => 92;
+
+  @override
+  Future<ExportOutcome> export({
+    required PhotoEntity photo,
+    required CropRect crop,
+    required Directory folder,
+    DateTime? now,
+    void Function(ExportStage stage)? onStage,
+  }) {
+    _onStage = onStage;
+    onStage?.call(ExportStage.reading);
+    return _done.future;
+  }
+}

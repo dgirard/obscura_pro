@@ -170,7 +170,22 @@ user's selection in the panel *is* the grant, and there is no way to reach a
 volume they have not pointed at. Seeing a card in the list and being allowed to
 read it are different things, and no amount of interface removes the difference.
 
-### The composition is visible while the frame is cut — 2026-08-12
+### An export says what it is doing — 2026-08-12
+Asked for: an indicator while the export runs and when it finishes. It had a
+disabled button reading "Export…" and, at the end, a line in the same grey as
+the hint beside it — which is to say, on a Q3 frame, several seconds
+indistinguishable from a hang followed by a change nobody notices.
+
+`ExportService` now reports three stages as each begins — reading the
+full-resolution stream off the card, turning and cutting and re-encoding thirty
+nine megapixels on a worker, writing the file — because those are the three
+things that take the time. The bar carries a progress line along its top edge,
+the current step in words beside a spinner, and the finish in the blue the
+design system keeps for exports, with a tick and the file's name and size.
+
+Reported before the work rather than after it, so the line is never one step
+behind; and not reported at all for work that does not happen, so a refused
+export cannot leave a claim that something was written.
 Reported: "lorsque l'on recadre on ne voit que le calque des trois tiers". The
 tracing on screen was not a layer at all — it is a thirds grid drawn inside the
 crop rectangle, about the frame being chosen — and the guides actually placed on

@@ -48,6 +48,16 @@ Future<Directory> defaultExportRoot() async {
   return Directory(p.join(home, 'Pictures', 'Q3Culling', 'Exports'));
 }
 
+/// Where an export has got to.
+///
+/// Three steps because there are three, and they are the three that take time:
+/// pulling a full-resolution stream off the card, turning and cutting and
+/// re-encoding thirty-nine megapixels on a worker, and writing the file. A
+/// photographer who has just pressed the button is owed more than a disabled
+/// button — a Q3 frame takes seconds, and seconds with no sign of life are
+/// indistinguishable from a hang.
+enum ExportStage { reading, rendering, writing }
+
 sealed class ExportOutcome {
   const ExportOutcome();
 }
@@ -87,11 +97,13 @@ class ExportService {
   /// applied to *its* pixel dimensions, which is what makes the exported file
   /// as large as the photograph allows rather than as large as the window
   /// happened to be.
+  /// [onStage] is called as each step begins, on the caller's isolate.
   Future<ExportOutcome> export({
     required PhotoEntity photo,
     required CropRect crop,
     required Directory folder,
     DateTime? now,
+    void Function(ExportStage stage)? onStage,
   }) async {
     final source = photo.viewerPreview;
     if (source == null) {
@@ -102,6 +114,7 @@ class ExportService {
 
     final Uint8List bytes;
     try {
+      onStage?.call(ExportStage.reading);
       bytes = await _readRange(file.path, source.offset, source.length);
     } on FileSystemException catch (error) {
       return ExportFailed(error.message);
@@ -112,6 +125,7 @@ class ExportService {
     // happens on a worker and only the finished JPEG comes back.
     final _Rendered rendered;
     try {
+      onStage?.call(ExportStage.rendering);
       final job = _CropJob(
         source: bytes,
         orientation: photo.orientation,
@@ -140,6 +154,7 @@ class ExportService {
     ));
 
     try {
+      onStage?.call(ExportStage.writing);
       await folder.create(recursive: true);
       // Through a temporary name and a rename: an export folder should never
       // hold a half-written file that a photographer might pick up.
