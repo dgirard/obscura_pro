@@ -11,6 +11,8 @@ import 'package:obscura_pro/features/catalog/stable_key.dart';
 import 'package:obscura_pro/features/grid/grid_screen.dart';
 import 'package:obscura_pro/features/grid/photo_cell.dart';
 import 'package:obscura_pro/features/grid/thumbnail_provider.dart';
+import 'package:obscura_pro/features/layers/layer_controller.dart';
+import 'package:obscura_pro/features/layers/layer_repository.dart';
 import 'package:obscura_pro/features/trash/mark_store.dart';
 import 'package:obscura_pro/features/trash/trash_providers.dart';
 import 'package:obscura_pro/features/viewer/exif_overlay.dart';
@@ -338,6 +340,9 @@ Future<ProviderContainer> _pump(
         // store is stood in for. The write-through itself is checked where the
         // store is, not through the viewer.
         markStoreProvider.overrideWith((ref) async => InMemoryMarkStore()),
+        // Same reason: the viewer points the composition at whichever
+        // photograph it is showing, and that reads from the database.
+        layerRepositoryProvider.overrideWith((ref) => InMemoryLayerStore()),
         gridThumbnailProvider.overrideWith(
           (ref, request) async => GridThumbnail(
             jpeg: _pixel,

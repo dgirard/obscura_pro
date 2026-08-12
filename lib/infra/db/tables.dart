@@ -30,6 +30,14 @@ enum ThumbVariant { small, full }
 ///
 /// Patterns are reference data seeded from the generated catalog, not user
 /// content; [code] is the seed's identity across re-seeds.
+///
+/// The spec's `svg` and `aspect_ratio` columns are gone (schema v3), and their
+/// absence is the finding of U12. The Grammaire's inline SVGs are teaching
+/// diagrams rather than overlay assets, so a guide's geometry is *built* from
+/// the frame it lands on — `layers/patterns/constructions.dart` — and five of
+/// the fifteen change shape with that frame. A stored path would have been a
+/// 3:2 shape stretched onto an XPan, and a stored reference ratio would have
+/// been the excuse for stretching it.
 class Patterns extends Table {
   @override
   String get tableName => 'pattern';
@@ -39,12 +47,10 @@ class Patterns extends Table {
   TextColumn get nom => text()();
   TextColumn get categorie => text()();
 
-  /// Vector description (SVG path / primitives) in normalized 0..1 space.
-  TextColumn get svg => text()();
-
-  /// Reference aspect ratio for patterns whose geometry depends on the frame
-  /// (spiral, rabatment, diagonal method). Null for ratio-independent grids.
-  RealColumn get aspectRatio => real().nullable()();
+  /// `guide` for the fifteen that can be laid over a photograph, `reference`
+  /// for the fifteen that are a card to read. Stored as text for the same
+  /// reason [TrashItems.state] is: these rows get read by hand.
+  TextColumn get kind => text().withDefault(const Constant('guide'))();
 }
 
 /// Photos known to the app, keyed by stable identity rather than by path.

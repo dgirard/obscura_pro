@@ -592,16 +592,10 @@ class TrashService {
 
   // --- Plumbing --------------------------------------------------------------
 
-  Future<int> _photoId(PhotoEntity photo) async {
-    final existing = await _catalog.photoByStableKey(photo.key.value);
-    if (existing != null) return existing.id;
-    return _catalog.insertPhoto(
-      PhotosCompanion.insert(
+  Future<int> _photoId(PhotoEntity photo) => _catalog.photoIdFor(
         cleStable: photo.key.value,
         radicalDcf: photo.dcfPath,
-      ),
-    );
-  }
+      );
 
   static TrashFileKind _kindOf(PhotoFile file) =>
       file.kind == PhotoFileKind.raw ? TrashFileKind.dng : TrashFileKind.jpg;

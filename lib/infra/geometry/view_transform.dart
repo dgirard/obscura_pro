@@ -103,17 +103,35 @@ final class ViewTransform {
     return 1 / (fit * devicePixelRatio);
   }
 
+  /// The whole chain as one affine transform: normalized space to the viewport.
+  ///
+  /// Obscura's flip, the fitted rectangle and the zoom matrix are all affine,
+  /// so the three compose into one. Layers need it as a matrix rather than as a
+  /// mapping of points: a guide is a path, and transforming the path once is
+  /// both cheaper and the only way to keep the stroke one pixel wide while the
+  /// geometry under it scales.
+  ///
+  /// [normalizedToScreen] is implemented with this, so the chain exists once.
+  Matrix4 get normalizedToViewport {
+    final rect = fittedRect;
+    final m = matrix?.clone() ?? Matrix4.identity();
+    m
+      ..translateByDouble(rect.left, rect.top, 0, 1)
+      ..scaleByDouble(rect.width, rect.height, 1, 1);
+    if (obscura) {
+      m
+        ..translateByDouble(1, 1, 0, 1)
+        ..scaleByDouble(-1, -1, 1, 1);
+    }
+    return m;
+  }
+
   /// A normalized point to a point in the viewport.
   Offset normalizedToScreen(Offset normalized) {
-    final oriented = obscura
-        ? Offset(1 - normalized.dx, 1 - normalized.dy)
-        : normalized;
-    final rect = fittedRect;
-    final scene = Offset(
-      rect.left + oriented.dx * rect.width,
-      rect.top + oriented.dy * rect.height,
+    final v = normalizedToViewport.perspectiveTransform(
+      Vector3(normalized.dx, normalized.dy, 0),
     );
-    return _sceneToViewport(scene);
+    return Offset(v.x, v.y);
   }
 
   /// A point in the viewport to a normalized point.
@@ -170,13 +188,6 @@ final class ViewTransform {
         matrix: matrix ?? this.matrix,
         obscura: obscura ?? this.obscura,
       );
-
-  Offset _sceneToViewport(Offset scene) {
-    final m = matrix;
-    if (m == null) return scene;
-    final v = m.perspectiveTransform(Vector3(scene.dx, scene.dy, 0));
-    return Offset(v.x, v.y);
-  }
 
   Offset _viewportToScene(Offset viewportPoint) {
     final m = matrix;

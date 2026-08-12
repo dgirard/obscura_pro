@@ -44,6 +44,24 @@ class CatalogDao extends DatabaseAccessor<AppDatabase> with _$CatalogDaoMixin {
     await into(photos).insert(photo, onConflict: DoUpdate((_) => photo, target: [photos.cleStable]));
   }
 
+  /// The row id for a stable key, inserting a minimal row when this Mac has not
+  /// recorded the photograph before.
+  ///
+  /// One implementation, because two modules need it — the trash writes a
+  /// deletion intent against a photo id and the layers panel writes a placement
+  /// against the same one — and a second copy would be free to disagree about
+  /// what a photo row is for.
+  Future<int> photoIdFor({
+    required String cleStable,
+    required String radicalDcf,
+  }) async {
+    final existing = await photoByStableKey(cleStable);
+    if (existing != null) return existing.id;
+    return insertPhoto(
+      PhotosCompanion.insert(cleStable: cleStable, radicalDcf: radicalDcf),
+    );
+  }
+
   /// Fills in the header-parse result so decode workers never walk the IFD
   /// chain again for this photo.
   Future<void> recordPreviewOffsets(

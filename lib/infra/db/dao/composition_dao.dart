@@ -33,6 +33,14 @@ class CompositionDao extends DatabaseAccessor<AppDatabase> with _$CompositionDao
 
   Future<bool> updateLayer(LayerInstance layer) => update(layerInstances).replace(layer);
 
+  /// Writes the fields a transform changed, leaving the rest of the row alone.
+  ///
+  /// A drag rewrites four numbers; `replace` would rewrite the whole row from
+  /// whatever the caller happened to be holding, which is how a stale copy in
+  /// one screen quietly undoes a change made in another.
+  Future<int> writeLayer(int id, LayerInstancesCompanion values) =>
+      (update(layerInstances)..where((l) => l.id.equals(id))).write(values);
+
   Future<int> removeLayer(int id) =>
       (delete(layerInstances)..where((l) => l.id.equals(id))).go();
 

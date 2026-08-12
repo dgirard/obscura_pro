@@ -39,9 +39,8 @@ void main() {
           PatternsCompanion.insert(
             code: code,
             nom: 'Spirale dorée',
-            categorie: 'formes',
-            svg: 'M0,0 C0.5,0 1,0.5 1,1',
-            aspectRatio: const Value(1.618),
+            categorie: 'grilles',
+            kind: const Value('guide'),
           ),
         );
   }
@@ -71,7 +70,10 @@ void main() {
       final file = File('${dir.path}/v1.sqlite');
 
       // The v1 schema, written by hand: the thumbnail index before it carried a
-      // placeholder colour or a pixel size.
+      // placeholder colour or a pixel size, and the pattern library while it
+      // still claimed to hold SVG. Both of the steps this database has to climb
+      // are in here, because a migration chain is only ever exercised from the
+      // oldest schema anybody still has.
       final upgraded = AppDatabase.forTesting(NativeDatabase(file, setup: (raw) {
         if (raw.userVersion != 0) return;
         raw
@@ -84,6 +86,11 @@ void main() {
               'cache_path TEXT NOT NULL, byte_size INTEGER NOT NULL, '
               "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
               'UNIQUE (cle_stable, variant))')
+          ..execute('CREATE TABLE pattern (id INTEGER NOT NULL PRIMARY KEY '
+              'AUTOINCREMENT, code TEXT NOT NULL UNIQUE, nom TEXT NOT NULL, '
+              'categorie TEXT NOT NULL, svg TEXT NOT NULL, aspect_ratio REAL)')
+          ..execute("INSERT INTO pattern (code, nom, categorie, svg) "
+              "VALUES ('rule-of-thirds', 'Règle des tiers', 'grilles', 'M0,0')")
           ..execute("INSERT INTO photo (cle_stable, radical_dcf) "
               "VALUES ('legacy-key', '100LEICA/L1000001')")
           ..execute('INSERT INTO thumb_cache (cle_stable, variant, cache_path, '
@@ -102,12 +109,18 @@ void main() {
       // grid falls back to the neutral cell it uses for an unknown photograph.
       expect(row.averageColor, isNull);
       expect(row.pixelWidth, isNull);
+
+      // And the pattern it also held came across the v3 step, which rebuilds
+      // that table.
+      final pattern = await upgraded.catalogDao.patternByCode('rule-of-thirds');
+      expect(pattern, isNotNull);
+      expect(pattern!.kind, 'guide');
     });
   });
 
   group('schema', () {
-    test('creates every table cleanly at schemaVersion 2', () async {
-      expect(db.schemaVersion, 2);
+    test('creates every table cleanly at schemaVersion 3', () async {
+      expect(db.schemaVersion, 3);
 
       final tables = await db
           .customSelect("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
@@ -152,8 +165,8 @@ void main() {
 
       expect(found, isNotNull);
       expect(found!.nom, 'Spirale dorée');
-      expect(found.categorie, 'formes');
-      expect(found.aspectRatio, closeTo(1.618, 1e-9));
+      expect(found.categorie, 'grilles');
+      expect(found.kind, 'guide');
     });
 
     test('re-seeding updates in place instead of duplicating', () async {
@@ -162,8 +175,7 @@ void main() {
         PatternsCompanion.insert(
           code: 'golden_spiral',
           nom: 'Spirale de Fibonacci',
-          categorie: 'formes',
-          svg: 'M0,0 C0.5,0 1,0.5 1,1',
+          categorie: 'grilles',
         ),
       ]);
 

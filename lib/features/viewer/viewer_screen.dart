@@ -13,6 +13,9 @@ import '../grid/grid_screen.dart';
 import '../grid/photo_cell.dart';
 import '../grid/thumbnail_provider.dart';
 import '../crop/crop_screen.dart';
+import '../layers/layer_canvas.dart';
+import '../layers/layer_controller.dart';
+import '../layers/layers_panel.dart';
 import '../trash/trash_providers.dart';
 import 'exif_overlay.dart';
 import 'obscura.dart';
@@ -83,10 +86,30 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
   int _current = 0;
 
   @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_followTransform);
+  }
+
+  @override
   void dispose() {
+    _controller.removeListener(_followTransform);
     _controller.dispose();
     _focus.dispose();
     super.dispose();
+  }
+
+  /// Repaints while a pan or a pinch is in progress, but only when something is
+  /// laid over the photograph.
+  ///
+  /// The guides are drawn beside the `InteractiveViewer` rather than inside it
+  /// — inside, the zoom would thicken their strokes — so they follow the picture
+  /// only if this screen rebuilds as the matrix changes. With no layer placed
+  /// the viewer still settles once at the end of the gesture, which is what
+  /// keeps the ordinary case at PERF-3's sixty frames.
+  void _followTransform() {
+    if (!mounted || ref.read(layerBoardProvider).layers.isEmpty) return;
+    setState(() {});
   }
 
   PhotoEntity get _photo => widget.photos[_current.clamp(0, widget.photos.length - 1)];
@@ -204,6 +227,7 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
     final obscura = ref.watch(obscuraProvider);
     final showExif = ref.watch(exifOverlayVisibleProvider);
     final marked = ref.watch(markedForDeletionProvider).contains(photo.key.value);
+    final layersOpen = ref.watch(layersPanelProvider);
 
     // Crop mode replaces the viewer rather than floating over it: choosing a
     // frame is a different activity from reviewing one, and the chrome of the
@@ -236,67 +260,116 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
           EnterCropModeIntent: CallbackAction<EnterCropModeIntent>(
             onInvoke: (_) => ref.read(cropModeProvider.notifier).enter(),
           ),
+          ToggleLayersPanelIntent: CallbackAction<ToggleLayersPanelIntent>(
+            onInvoke: (_) => ref.read(layersPanelProvider.notifier).toggle(),
+          ),
+          // Undo is global in the keyboard table and reaches the composition
+          // here. Marking has no undo yet — that is U9's half of this binding,
+          // and it is not built — so on a photograph with no layers on it ⌘Z
+          // does nothing rather than something surprising.
+          UndoIntent: CallbackAction<UndoIntent>(
+            onInvoke: (_) => ref.read(layerBoardProvider.notifier).undo(),
+          ),
+          RedoIntent: CallbackAction<RedoIntent>(
+            onInvoke: (_) => ref.read(layerBoardProvider.notifier).redo(),
+          ),
         },
         child: Focus(
           focusNode: _focus,
           autofocus: true,
-          child: ColoredBox(
-            color: ObscuraColors.canvas,
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                _viewport = constraints.biggest;
-                final width = _decodeWidth(_transform.zoom);
-                // Scheduled rather than called: preloading during build would
-                // mutate providers mid-frame.
-                WidgetsBinding.instance.addPostFrameCallback(
-                  (_) => _retainWindow(index),
-                );
-
-                return Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    GestureDetector(
-                      onDoubleTapDown: (d) => _lastTap = d.localPosition,
-                      onDoubleTap: _toggleActualPixels,
-                      child: InteractiveViewer(
-                        transformationController: _controller,
-                        minScale: 1,
-                        maxScale: _maxZoom(_transform),
-                        // Spec caveat 3: on a Mac the natural gesture over a
-                        // photograph is a trackpad pinch, which arrives as a
-                        // scroll unless this is on.
-                        trackpadScrollCausesScale: true,
-                        onInteractionEnd: (_) => setState(() {}),
-                        child: _Frame(
-                          photo: photo,
-                          targetWidth: width,
-                          obscura: obscura,
-                        ),
-                      ),
-                    ),
-                    _PreloadWindow(
-                      photos: widget.photos,
-                      index: index,
-                      targetWidth: width,
-                    ),
-                    if (marked) const _MarkedBanner(),
-                    if (showExif)
-                      IgnorePointer(child: ExifOverlay(photo: photo)),
-                    _Chrome(
-                      photo: photo,
-                      position: '${index + 1} / ${widget.photos.length}',
-                      obscura: obscura,
-                      showExif: showExif,
-                      marked: marked,
-                      onToggleMark: _toggleMark,
-                      onClose: _close,
-                    ),
-                  ],
-                );
-              },
-            ),
+          child: Row(
+            children: [
+              Expanded(
+                child: _canvas(
+                  photo: photo,
+                  index: index,
+                  obscura: obscura,
+                  showExif: showExif,
+                  marked: marked,
+                  layersOpen: layersOpen,
+                ),
+              ),
+              // Beside the photograph and never over it: the panel is where a
+              // guide is chosen and the picture is where it is judged, and a
+              // floating palette would cover the corner of the frame the
+              // composition is usually about.
+              if (layersOpen) const LayersPanel(),
+            ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// The photograph, its overlays and its chrome.
+  Widget _canvas({
+    required PhotoEntity photo,
+    required int index,
+    required bool obscura,
+    required bool showExif,
+    required bool marked,
+    required bool layersOpen,
+  }) {
+    return ColoredBox(
+      color: ObscuraColors.canvas,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          _viewport = constraints.biggest;
+          final width = _decodeWidth(_transform.zoom);
+          // Scheduled rather than called: preloading during build would
+          // mutate providers mid-frame, and so would pointing the
+          // composition at this photograph.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _retainWindow(index);
+            if (mounted) ref.read(layerBoardProvider.notifier).open(photo);
+          });
+
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              GestureDetector(
+                onDoubleTapDown: (d) => _lastTap = d.localPosition,
+                onDoubleTap: _toggleActualPixels,
+                child: InteractiveViewer(
+                  transformationController: _controller,
+                  minScale: 1,
+                  maxScale: _maxZoom(_transform),
+                  // Spec caveat 3: on a Mac the natural gesture over a
+                  // photograph is a trackpad pinch, which arrives as a
+                  // scroll unless this is on.
+                  trackpadScrollCausesScale: true,
+                  onInteractionEnd: (_) => setState(() {}),
+                  child: _Frame(
+                    photo: photo,
+                    targetWidth: width,
+                    obscura: obscura,
+                  ),
+                ),
+              ),
+              _PreloadWindow(
+                photos: widget.photos,
+                index: index,
+                targetWidth: width,
+              ),
+              // Above the picture and below the chrome: a guide belongs
+              // on the photograph, and the position counter and the
+              // buttons belong on top of both.
+              LayerCanvas(transform: _transform, interactive: layersOpen),
+              if (marked) const _MarkedBanner(),
+              if (showExif)
+                IgnorePointer(child: ExifOverlay(photo: photo)),
+              _Chrome(
+                photo: photo,
+                position: '${index + 1} / ${widget.photos.length}',
+                obscura: obscura,
+                showExif: showExif,
+                marked: marked,
+                onToggleMark: _toggleMark,
+                onClose: _close,
+              ),
+            ],
+          );
+        },
       ),
     );
   }

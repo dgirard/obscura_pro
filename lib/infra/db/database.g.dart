@@ -51,35 +51,18 @@ class $PatternsTable extends Patterns with TableInfo<$PatternsTable, Pattern> {
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
-  static const VerificationMeta _svgMeta = const VerificationMeta('svg');
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
   @override
-  late final GeneratedColumn<String> svg = GeneratedColumn<String>(
-    'svg',
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
     aliasedName,
     false,
     type: DriftSqlType.string,
-    requiredDuringInsert: true,
-  );
-  static const VerificationMeta _aspectRatioMeta = const VerificationMeta(
-    'aspectRatio',
-  );
-  @override
-  late final GeneratedColumn<double> aspectRatio = GeneratedColumn<double>(
-    'aspect_ratio',
-    aliasedName,
-    true,
-    type: DriftSqlType.double,
     requiredDuringInsert: false,
+    defaultValue: const Constant('guide'),
   );
   @override
-  List<GeneratedColumn> get $columns => [
-    id,
-    code,
-    nom,
-    categorie,
-    svg,
-    aspectRatio,
-  ];
+  List<GeneratedColumn> get $columns => [id, code, nom, categorie, kind];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -119,21 +102,10 @@ class $PatternsTable extends Patterns with TableInfo<$PatternsTable, Pattern> {
     } else if (isInserting) {
       context.missing(_categorieMeta);
     }
-    if (data.containsKey('svg')) {
+    if (data.containsKey('kind')) {
       context.handle(
-        _svgMeta,
-        svg.isAcceptableOrUnknown(data['svg']!, _svgMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_svgMeta);
-    }
-    if (data.containsKey('aspect_ratio')) {
-      context.handle(
-        _aspectRatioMeta,
-        aspectRatio.isAcceptableOrUnknown(
-          data['aspect_ratio']!,
-          _aspectRatioMeta,
-        ),
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
       );
     }
     return context;
@@ -161,14 +133,10 @@ class $PatternsTable extends Patterns with TableInfo<$PatternsTable, Pattern> {
         DriftSqlType.string,
         data['${effectivePrefix}categorie'],
       )!,
-      svg: attachedDatabase.typeMapping.read(
+      kind: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
-        data['${effectivePrefix}svg'],
+        data['${effectivePrefix}kind'],
       )!,
-      aspectRatio: attachedDatabase.typeMapping.read(
-        DriftSqlType.double,
-        data['${effectivePrefix}aspect_ratio'],
-      ),
     );
   }
 
@@ -184,19 +152,16 @@ class Pattern extends DataClass implements Insertable<Pattern> {
   final String nom;
   final String categorie;
 
-  /// Vector description (SVG path / primitives) in normalized 0..1 space.
-  final String svg;
-
-  /// Reference aspect ratio for patterns whose geometry depends on the frame
-  /// (spiral, rabatment, diagonal method). Null for ratio-independent grids.
-  final double? aspectRatio;
+  /// `guide` for the fifteen that can be laid over a photograph, `reference`
+  /// for the fifteen that are a card to read. Stored as text for the same
+  /// reason [TrashItems.state] is: these rows get read by hand.
+  final String kind;
   const Pattern({
     required this.id,
     required this.code,
     required this.nom,
     required this.categorie,
-    required this.svg,
-    this.aspectRatio,
+    required this.kind,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -205,10 +170,7 @@ class Pattern extends DataClass implements Insertable<Pattern> {
     map['code'] = Variable<String>(code);
     map['nom'] = Variable<String>(nom);
     map['categorie'] = Variable<String>(categorie);
-    map['svg'] = Variable<String>(svg);
-    if (!nullToAbsent || aspectRatio != null) {
-      map['aspect_ratio'] = Variable<double>(aspectRatio);
-    }
+    map['kind'] = Variable<String>(kind);
     return map;
   }
 
@@ -218,10 +180,7 @@ class Pattern extends DataClass implements Insertable<Pattern> {
       code: Value(code),
       nom: Value(nom),
       categorie: Value(categorie),
-      svg: Value(svg),
-      aspectRatio: aspectRatio == null && nullToAbsent
-          ? const Value.absent()
-          : Value(aspectRatio),
+      kind: Value(kind),
     );
   }
 
@@ -235,8 +194,7 @@ class Pattern extends DataClass implements Insertable<Pattern> {
       code: serializer.fromJson<String>(json['code']),
       nom: serializer.fromJson<String>(json['nom']),
       categorie: serializer.fromJson<String>(json['categorie']),
-      svg: serializer.fromJson<String>(json['svg']),
-      aspectRatio: serializer.fromJson<double?>(json['aspectRatio']),
+      kind: serializer.fromJson<String>(json['kind']),
     );
   }
   @override
@@ -247,8 +205,7 @@ class Pattern extends DataClass implements Insertable<Pattern> {
       'code': serializer.toJson<String>(code),
       'nom': serializer.toJson<String>(nom),
       'categorie': serializer.toJson<String>(categorie),
-      'svg': serializer.toJson<String>(svg),
-      'aspectRatio': serializer.toJson<double?>(aspectRatio),
+      'kind': serializer.toJson<String>(kind),
     };
   }
 
@@ -257,15 +214,13 @@ class Pattern extends DataClass implements Insertable<Pattern> {
     String? code,
     String? nom,
     String? categorie,
-    String? svg,
-    Value<double?> aspectRatio = const Value.absent(),
+    String? kind,
   }) => Pattern(
     id: id ?? this.id,
     code: code ?? this.code,
     nom: nom ?? this.nom,
     categorie: categorie ?? this.categorie,
-    svg: svg ?? this.svg,
-    aspectRatio: aspectRatio.present ? aspectRatio.value : this.aspectRatio,
+    kind: kind ?? this.kind,
   );
   Pattern copyWithCompanion(PatternsCompanion data) {
     return Pattern(
@@ -273,10 +228,7 @@ class Pattern extends DataClass implements Insertable<Pattern> {
       code: data.code.present ? data.code.value : this.code,
       nom: data.nom.present ? data.nom.value : this.nom,
       categorie: data.categorie.present ? data.categorie.value : this.categorie,
-      svg: data.svg.present ? data.svg.value : this.svg,
-      aspectRatio: data.aspectRatio.present
-          ? data.aspectRatio.value
-          : this.aspectRatio,
+      kind: data.kind.present ? data.kind.value : this.kind,
     );
   }
 
@@ -287,14 +239,13 @@ class Pattern extends DataClass implements Insertable<Pattern> {
           ..write('code: $code, ')
           ..write('nom: $nom, ')
           ..write('categorie: $categorie, ')
-          ..write('svg: $svg, ')
-          ..write('aspectRatio: $aspectRatio')
+          ..write('kind: $kind')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, code, nom, categorie, svg, aspectRatio);
+  int get hashCode => Object.hash(id, code, nom, categorie, kind);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -303,8 +254,7 @@ class Pattern extends DataClass implements Insertable<Pattern> {
           other.code == this.code &&
           other.nom == this.nom &&
           other.categorie == this.categorie &&
-          other.svg == this.svg &&
-          other.aspectRatio == this.aspectRatio);
+          other.kind == this.kind);
 }
 
 class PatternsCompanion extends UpdateCompanion<Pattern> {
@@ -312,42 +262,36 @@ class PatternsCompanion extends UpdateCompanion<Pattern> {
   final Value<String> code;
   final Value<String> nom;
   final Value<String> categorie;
-  final Value<String> svg;
-  final Value<double?> aspectRatio;
+  final Value<String> kind;
   const PatternsCompanion({
     this.id = const Value.absent(),
     this.code = const Value.absent(),
     this.nom = const Value.absent(),
     this.categorie = const Value.absent(),
-    this.svg = const Value.absent(),
-    this.aspectRatio = const Value.absent(),
+    this.kind = const Value.absent(),
   });
   PatternsCompanion.insert({
     this.id = const Value.absent(),
     required String code,
     required String nom,
     required String categorie,
-    required String svg,
-    this.aspectRatio = const Value.absent(),
+    this.kind = const Value.absent(),
   }) : code = Value(code),
        nom = Value(nom),
-       categorie = Value(categorie),
-       svg = Value(svg);
+       categorie = Value(categorie);
   static Insertable<Pattern> custom({
     Expression<int>? id,
     Expression<String>? code,
     Expression<String>? nom,
     Expression<String>? categorie,
-    Expression<String>? svg,
-    Expression<double>? aspectRatio,
+    Expression<String>? kind,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (code != null) 'code': code,
       if (nom != null) 'nom': nom,
       if (categorie != null) 'categorie': categorie,
-      if (svg != null) 'svg': svg,
-      if (aspectRatio != null) 'aspect_ratio': aspectRatio,
+      if (kind != null) 'kind': kind,
     });
   }
 
@@ -356,16 +300,14 @@ class PatternsCompanion extends UpdateCompanion<Pattern> {
     Value<String>? code,
     Value<String>? nom,
     Value<String>? categorie,
-    Value<String>? svg,
-    Value<double?>? aspectRatio,
+    Value<String>? kind,
   }) {
     return PatternsCompanion(
       id: id ?? this.id,
       code: code ?? this.code,
       nom: nom ?? this.nom,
       categorie: categorie ?? this.categorie,
-      svg: svg ?? this.svg,
-      aspectRatio: aspectRatio ?? this.aspectRatio,
+      kind: kind ?? this.kind,
     );
   }
 
@@ -384,11 +326,8 @@ class PatternsCompanion extends UpdateCompanion<Pattern> {
     if (categorie.present) {
       map['categorie'] = Variable<String>(categorie.value);
     }
-    if (svg.present) {
-      map['svg'] = Variable<String>(svg.value);
-    }
-    if (aspectRatio.present) {
-      map['aspect_ratio'] = Variable<double>(aspectRatio.value);
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
     }
     return map;
   }
@@ -400,8 +339,7 @@ class PatternsCompanion extends UpdateCompanion<Pattern> {
           ..write('code: $code, ')
           ..write('nom: $nom, ')
           ..write('categorie: $categorie, ')
-          ..write('svg: $svg, ')
-          ..write('aspectRatio: $aspectRatio')
+          ..write('kind: $kind')
           ..write(')'))
         .toString();
   }
@@ -3768,8 +3706,7 @@ typedef $$PatternsTableCreateCompanionBuilder =
       required String code,
       required String nom,
       required String categorie,
-      required String svg,
-      Value<double?> aspectRatio,
+      Value<String> kind,
     });
 typedef $$PatternsTableUpdateCompanionBuilder =
     PatternsCompanion Function({
@@ -3777,8 +3714,7 @@ typedef $$PatternsTableUpdateCompanionBuilder =
       Value<String> code,
       Value<String> nom,
       Value<String> categorie,
-      Value<String> svg,
-      Value<double?> aspectRatio,
+      Value<String> kind,
     });
 
 final class $$PatternsTableReferences
@@ -3833,13 +3769,8 @@ class $$PatternsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<String> get svg => $composableBuilder(
-    column: $table.svg,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<double> get aspectRatio => $composableBuilder(
-    column: $table.aspectRatio,
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3898,13 +3829,8 @@ class $$PatternsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get svg => $composableBuilder(
-    column: $table.svg,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<double> get aspectRatio => $composableBuilder(
-    column: $table.aspectRatio,
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
     builder: (column) => ColumnOrderings(column),
   );
 }
@@ -3930,13 +3856,8 @@ class $$PatternsTableAnnotationComposer
   GeneratedColumn<String> get categorie =>
       $composableBuilder(column: $table.categorie, builder: (column) => column);
 
-  GeneratedColumn<String> get svg =>
-      $composableBuilder(column: $table.svg, builder: (column) => column);
-
-  GeneratedColumn<double> get aspectRatio => $composableBuilder(
-    column: $table.aspectRatio,
-    builder: (column) => column,
-  );
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
 
   Expression<T> layerInstancesRefs<T extends Object>(
     Expression<T> Function($$LayerInstancesTableAnnotationComposer a) f,
@@ -3996,15 +3917,13 @@ class $$PatternsTableTableManager
                 Value<String> code = const Value.absent(),
                 Value<String> nom = const Value.absent(),
                 Value<String> categorie = const Value.absent(),
-                Value<String> svg = const Value.absent(),
-                Value<double?> aspectRatio = const Value.absent(),
+                Value<String> kind = const Value.absent(),
               }) => PatternsCompanion(
                 id: id,
                 code: code,
                 nom: nom,
                 categorie: categorie,
-                svg: svg,
-                aspectRatio: aspectRatio,
+                kind: kind,
               ),
           createCompanionCallback:
               ({
@@ -4012,15 +3931,13 @@ class $$PatternsTableTableManager
                 required String code,
                 required String nom,
                 required String categorie,
-                required String svg,
-                Value<double?> aspectRatio = const Value.absent(),
+                Value<String> kind = const Value.absent(),
               }) => PatternsCompanion.insert(
                 id: id,
                 code: code,
                 nom: nom,
                 categorie: categorie,
-                svg: svg,
-                aspectRatio: aspectRatio,
+                kind: kind,
               ),
           withReferenceMapper: (p0) => p0
               .map(

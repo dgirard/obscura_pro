@@ -49,6 +49,14 @@ several need a card whose contents are expendable.
   numbering intact. This is the gate the plan sets for Phase A being real.
 - **U11 — AE4.** Partly done: an exported file was checked and carries the right
   model, date and ISO. Still to do on a real card end to end.
+- **U13 — a guide on a real photograph.** Place the spiral on a frame at fit and
+  at 400 %, drag it, take a corner, toggle obscura, and watch whether the
+  handles stay under the pointer. The coordinate stack is tested at every step;
+  what a test cannot say is whether it *feels* attached.
+- **U14 — AE3 across a real eject and remount.** Compose on a frame, eject,
+  put the card back (ideally in another reader, at another mount point), and
+  reopen the same photograph. The unit test proves the key does not depend on
+  the path; only the card proves the key survives the round trip.
 - **The launch-time reopen, on a signed build.** The order — scope first, then
   look at the card — is what makes it work under the sandbox, and no test can
   prove that: `RecordingBridge` grants everything it is asked for. Quit with a
@@ -66,6 +74,26 @@ Ordered by how much they would cost a user.
 `_applyOrientation` over the eight EXIF cases. They run in different isolates
 and neither can import the other's private helper today, but the rule is one
 rule and it is written twice.
+
+### Undo still only reaches the layers
+`⌘Z`/`⌘⇧Z` are global in the spec's keyboard table and are documented there as
+covering *layers and marking*. U13 built the composition's undo stack and wired
+those keys to it; marking has none, so on a photograph with no layers on it the
+keys do nothing. Marks are written through, so the undo that is missing is a
+convenience rather than a way of losing a decision — but the table promises it.
+
+### A guide is a judgement, not a deliverable
+Composition layers are drawn over the photograph and are never burned into an
+export: `ExportService` writes the crop and nothing else. That is deliberate —
+what leaves the app is a photograph, not a photograph with a diagram on it —
+but it does mean there is no way to hand someone the frame *with* the spiral on
+it, which is a reasonable thing to want when the point is to explain a
+composition. Undecided rather than refused.
+
+### A layer is turned from the panel, not from the canvas
+Rotation is a slider under the selection. The spec calls rotation optional and
+the maquette shows no control for it at all; a rotation handle outside the
+corner handles would be the conventional answer and is not there.
 
 ### A per-photo undo in immediate mode
 Immediate mode moves the originals to the Mac as each decision is made, and
@@ -103,6 +131,74 @@ undecided rather than decided.
 ---
 
 ## Decided
+
+### The Grammaire's schemas are not overlay assets — 2026-08-12
+U12 expected the thirty inline SVGs of `grammaire-du-cadre.html` to be lifted
+out and used as layers. They cannot be. They are teaching diagrams: each fills
+its frame white, labels itself, and draws a blue blob standing in for a subject
+— `Règle des tiers` marks three points of force in red because the fourth is
+under the blob. Extracting them faithfully would have shipped a three-point rule
+of thirds.
+
+So the generator takes the metadata (number, names, section, and the three
+fields every card carries) and `constructions.dart` builds the geometry from the
+frame the guide lands on. `patterns_test.dart` pins each construction back to
+the coordinates the document draws, converted out of its own viewBox — verified
+against the source rather than copied from it, and the one place where the two
+disagree is recorded there: the golden spiral's "eye" is drawn by hand in the
+document, a little outside its own last square, and here it is the limit of the
+subdivision.
+
+The split that came out of it is fifteen and fifteen. Fifteen schemas are
+constructions of the frame and can be laid over a photograph; fifteen draw a
+subject — a face for "remplir le cadre", a colour wheel for the complementaries
+— and a stroke colour cannot render them. Those stay in the library and open
+their card instead of dropping a shape, because a photographer looking for
+"espace négatif" should find it where the book has it and be told what it says.
+
+Five of the fifteen are recomputed from the frame's proportions rather than
+stored: spiral, rabatment, dynamic symmetry, the diagonal method and the golden
+triangle. A shape baked at 3:2 would be wrong on every other crop the app
+offers, which is what the plan's execution note warned about.
+
+### The pattern table stops claiming to hold SVG — 2026-08-12
+Schema v3. `pattern.svg` and `pattern.aspect_ratio` are gone; `pattern.kind`
+says `guide` or `reference`. The spec's §7 names those two columns, and they
+were written for the assumption U12 disproved: there is no path to store, and a
+stored reference ratio would only be the excuse to stretch one. Rebuilding a
+table is the migration that can quietly break a foreign key, so
+`migration_test.dart` puts a layer instance on a pattern first and checks it
+still points at the same row afterwards — which is how the missing `newColumns`
+was found before it reached a database.
+
+### A layer is written when it is placed — 2026-08-12
+The composition maquette ends with a red "Enregistrer la composition" button.
+There is nothing for it to do: a placement is written through the moment it is
+made, the same rule marking follows and for the same reason. A button that saved
+what was already saved would teach the photographer to distrust everything they
+had not pressed it for. In its place is a line that says whether the writing is
+working, and `LayerBoard.durable` is what it reads.
+
+Undo is a stack of whole compositions rather than of inverse operations: a
+composition is a handful of small records, and the alternative is a second
+implementation of every mutation kept in step by hope. One step per gesture, not
+one per frame — undoing a drag puts the guide back where it was picked up.
+
+### The panel takes the pointer only where a guide is — 2026-08-12
+The obvious build is a gesture detector over the whole photograph while the
+panel is open. It wins the arena for every drag, which would take panning away
+from exactly the moment it is most wanted — aligning a guide to a detail at
+400 %. So the canvas refuses the hit test everywhere a guide is not, and the
+drag reaches the `InteractiveViewer` underneath.
+
+Two things a widget test found and no unit test could. A pan is not recognised
+until the pointer has travelled the touch slop, so hit-testing at the start of
+the *gesture* looks for the handle twenty pixels from where the finger went
+down: every corner drag came out as a move. The handle is now taken at pointer
+down. And each frame of a drag is computed from the placement as it was when the
+drag began, not from the placement as it is: feeding the result back in maps the
+pointer through a frame that has already moved, and the guide walks away from
+the pointer a little more with every frame.
 
 ### A mark is written at the moment it is made — 2026-08-12
 Marks lived in `markedForDeletionProvider`, in memory, and reached the trash
@@ -178,6 +274,13 @@ per-photo undo, which is above under gaps.
 
 ## Undecided, and waiting on you
 
+### A key for removing the selected layer
+`⌫` marks the photograph for deletion, in every scope, which is the right
+binding for a culling tool. Making it mean "remove this guide" while a layer is
+selected would put the app's most consequential key on a second meaning that
+depends on an invisible state. The panel's button is the only way to take a
+guide off, and that is deliberate until someone says otherwise.
+
 ### A key for the EXIF overlay
 The spec's keyboard table (section 5) assigns none, so it is a visible control
 only. `I` would be conventional.
@@ -186,9 +289,8 @@ only. `I` would be conventional.
 
 ## Not started
 
-- **U12** — the 30 Grammaire-du-cadre patterns as typed vector data.
-- **U13** — the layer canvas: placing, moving, resizing composition guides.
-- **U14** — the layers panel and per-photo persistence.
+Nothing from the plan. U1–U14 are all built; what is left is above (an exports
+viewer, the gaps) and below (the verifications that need a card).
 
 ---
 

@@ -54,7 +54,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -69,6 +69,23 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(thumbCacheEntries, thumbCacheEntries.pixelHeight);
             await m.addColumn(thumbCacheEntries, thumbCacheEntries.averageColor);
             version = 2;
+          }
+
+          // v3 took `svg` and `aspect_ratio` off the pattern library: a guide's
+          // geometry is built from the frame it lands on and cannot be stored
+          // (see [Patterns]). Rebuilding the table is safe in a way it would
+          // not usually be — `pattern` has never had a writer, so no database
+          // in existence holds a row, and no `layer_instance` can be pointing
+          // at one. Foreign keys are still off here: the pragma in
+          // [beforeOpen] runs after migrations, which is what makes drift's
+          // copy-and-swap legal at all.
+          if (version == 2) {
+            await m.alterTable(
+              // `kind` has to be named as new, or the copy-and-swap selects a
+              // column the old table never had and the whole open fails.
+              TableMigration(patterns, newColumns: [patterns.kind]),
+            );
+            version = 3;
           }
 
           if (version != to) {
