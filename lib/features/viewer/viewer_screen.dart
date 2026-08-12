@@ -15,6 +15,7 @@ import '../grid/thumbnail_provider.dart';
 import '../crop/crop_screen.dart';
 import '../layers/layer_canvas.dart';
 import '../layers/layer_controller.dart';
+import '../exports/export_marks.dart';
 import '../layers/layers_panel.dart';
 import '../trash/trash_providers.dart';
 import 'exif_overlay.dart';
@@ -256,6 +257,10 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
           ToggleMarkForDeletionIntent:
               CallbackAction<ToggleMarkForDeletionIntent>(
             onInvoke: (_) => _toggleMark(),
+          ),
+          ToggleExportMarkIntent: CallbackAction<ToggleExportMarkIntent>(
+            onInvoke: (_) =>
+                ref.read(exportMarksProvider.notifier).toggle(_photo),
           ),
           EnterCropModeIntent: CallbackAction<EnterCropModeIntent>(
             onInvoke: (_) => ref.read(cropModeProvider.notifier).enter(),
@@ -592,6 +597,15 @@ class _Chrome extends ConsumerWidget {
               icon: Icons.grid_3x3,
               active: ref.watch(layersPanelProvider),
               onPressed: () => ref.read(layersPanelProvider.notifier).toggle(),
+            ),
+            _ChromeButton(
+              tooltip: ref.watch(exportMarksProvider).contains(photo.key.value)
+                  ? 'Ne plus exporter (E)'
+                  : 'Marquer à exporter (E)',
+              icon: Icons.ios_share,
+              active: ref.watch(exportMarksProvider).contains(photo.key.value),
+              onPressed: () =>
+                  ref.read(exportMarksProvider.notifier).toggle(photo),
             ),
             _ChromeButton(
               tooltip: 'Recadrer (C)',

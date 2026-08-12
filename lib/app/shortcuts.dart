@@ -75,6 +75,16 @@ class EmptyTrashIntent extends Intent {
   const EmptyTrashIntent();
 }
 
+// --- Export -----------------------------------------------------------------
+
+/// Marks the photograph as one to export, or takes the mark off.
+///
+/// The other half of a culling pass: `⌫` says what is going, `E` says what is
+/// wanted. Neither writes anything to the card.
+class ToggleExportMarkIntent extends Intent {
+  const ToggleExportMarkIntent();
+}
+
 // --- Crop -------------------------------------------------------------------
 
 class EnterCropModeIntent extends Intent {
@@ -192,6 +202,15 @@ const List<ShortcutBinding> obscuraShortcutBindings = <ShortcutBinding>[
     activator: SingleActivator(LogicalKeyboardKey.backspace),
     intent: ToggleMarkForDeletionIntent(),
     description: 'Mark or unmark for deletion',
+  ),
+  // Global for the same reason ⌫ is: the decision is made from the grid and
+  // from the viewer, and a photographer should not have to remember which.
+  // `⌘E` exports the crop on screen; `E` alone marks the frame for later.
+  ShortcutBinding(
+    scope: ShortcutScope.global,
+    activator: SingleActivator(LogicalKeyboardKey.keyE),
+    intent: ToggleExportMarkIntent(),
+    description: 'Mark or unmark for export',
   ),
 
   // Grid.

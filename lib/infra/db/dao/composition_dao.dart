@@ -7,7 +7,7 @@ part 'composition_dao.g.dart';
 
 /// Layer placements and export traceability -- the two things the app records
 /// *about* a photo without ever modifying it.
-@DriftAccessor(tables: [LayerInstances, CropExports, Photos])
+@DriftAccessor(tables: [LayerInstances, CropExports, ExportMarks, Photos])
 class CompositionDao extends DatabaseAccessor<AppDatabase> with _$CompositionDaoMixin {
   CompositionDao(super.db);
 
@@ -66,6 +66,36 @@ class CompositionDao extends DatabaseAccessor<AppDatabase> with _$CompositionDao
       for (final row in await query.get())
         (row.readTable(cropExports), row.readTable(photos)),
     ];
+  }
+
+  // --- The export queue ------------------------------------------------------
+
+  /// Marks [photoId] as wanted. Marking twice is the same decision, not two.
+  Future<void> markForExport(int photoId) async {
+    await into(exportMarks).insert(
+      ExportMarksCompanion.insert(photoId: photoId),
+      // Targeted at the unique key rather than left to default to the primary
+      // one: without the target this conflicts on `id`, which a fresh row never
+      // does, and the second mark of the same photograph throws.
+      onConflict: DoNothing(target: [exportMarks.photoId]),
+    );
+  }
+
+  Future<int> unmarkForExport(int photoId) =>
+      (delete(exportMarks)..where((m) => m.photoId.equals(photoId))).go();
+
+  /// Stable keys of every photograph waiting to be exported.
+  ///
+  /// Keyed by the stable key rather than by row id for the reason the whole app
+  /// is: the grid holds photographs found on a card, and the mark has to find
+  /// them again after the card has been out.
+  Future<Set<String>> markedForExport() async {
+    final query = select(exportMarks).join([
+      innerJoin(photos, photos.id.equalsExp(exportMarks.photoId)),
+    ]);
+    return {
+      for (final row in await query.get()) row.readTable(photos).cleStable,
+    };
   }
 
   Future<int> forgetExport(int id) =>

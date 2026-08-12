@@ -14,6 +14,7 @@ import '../../app/app_shell.dart';
 import '../../infra/safety/io_errors.dart';
 import '../../infra/safety/parasite_guard.dart';
 import '../exports/exports_screen.dart';
+import '../exports/export_marks.dart';
 import '../settings/settings_screen.dart';
 import '../settings/settings_store.dart';
 import '../trash/trash_providers.dart';
@@ -236,6 +237,14 @@ class _LibraryGridState extends ConsumerState<LibraryGrid> {
     _mark(photos[ref.read(gridCursorProvider).clamp(0, photos.length - 1)]);
   }
 
+  void _toggleWanted() {
+    final photos = widget.photos;
+    if (photos.isEmpty) return;
+    ref.read(exportMarksProvider.notifier).toggle(
+          photos[ref.read(gridCursorProvider).clamp(0, photos.length - 1)],
+        );
+  }
+
   /// Records the decision and reports it only when it did not go as the
   /// deletion mode promised.
   ///
@@ -257,6 +266,7 @@ class _LibraryGridState extends ConsumerState<LibraryGrid> {
 
     final cursor = ref.watch(gridCursorProvider).clamp(0, photos.length - 1);
     final marked = ref.watch(markedForDeletionProvider);
+    final wanted = ref.watch(exportMarksProvider);
     final placeholders =
         ref.watch(placeholderColorsProvider).value ?? const {};
     final pixelRatio = MediaQuery.devicePixelRatioOf(context);
@@ -283,6 +293,9 @@ class _LibraryGridState extends ConsumerState<LibraryGrid> {
           ToggleMarkForDeletionIntent:
               CallbackAction<ToggleMarkForDeletionIntent>(
             onInvoke: (_) => _toggleMark(),
+          ),
+          ToggleExportMarkIntent: CallbackAction<ToggleExportMarkIntent>(
+            onInvoke: (_) => _toggleWanted(),
           ),
         },
         child: Focus(
@@ -328,10 +341,16 @@ class _LibraryGridState extends ConsumerState<LibraryGrid> {
                       targetShortSide: (_tileExtent * pixelRatio).round(),
                       selected: i == cursor,
                       marked: marked.contains(photo.key.value),
+                      wanted: wanted.contains(photo.key.value),
                       placeholderColor: placeholders[photo.key.value],
                       onToggleMark: () {
                         ref.read(gridCursorProvider.notifier).moveTo(i);
                         _mark(photo);
+                        _focus.requestFocus();
+                      },
+                      onToggleWanted: () {
+                        ref.read(gridCursorProvider.notifier).moveTo(i);
+                        ref.read(exportMarksProvider.notifier).toggle(photo);
                         _focus.requestFocus();
                       },
                     ),

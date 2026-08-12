@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/catalog/photo_entity.dart';
+import '../features/exports/export_marks.dart';
 import '../features/grid/grid_screen.dart';
 import '../features/trash/trash_providers.dart';
 import '../features/volume_select/card_selection.dart';
@@ -19,6 +20,7 @@ class StatusBar extends StatelessWidget {
     required this.photoCount,
     this.markedCount = 0,
     this.markedBytes = 0,
+    this.wantedCount = 0,
     this.marksAreDurable = true,
     this.cardFreeBytes,
     this.cardName,
@@ -35,6 +37,11 @@ class StatusBar extends StatelessWidget {
   /// between marking twelve JPEGs and marking twelve RAW+JPG pairs.
   final int markedCount;
   final int markedBytes;
+
+  /// How many photographs on this card are waiting to be exported. No bytes
+  /// beside it: what an export will weigh is not knowable until it is written,
+  /// and a number invented here would be a promise about someone's disk.
+  final int wantedCount;
 
   /// Whether those marks are reaching the disk.
   ///
@@ -76,6 +83,12 @@ class StatusBar extends StatelessWidget {
               child: Text(
                 '$markedCount à supprimer · ${formatBytes(markedBytes)}',
               ),
+            ),
+          if (wantedCount > 0)
+            _Field(
+              key: const Key('status-wanted'),
+              tone: ObscuraColors.statusExport,
+              child: Text('$wantedCount à exporter'),
             ),
           if (!marksAreDurable)
             _Field(
@@ -137,6 +150,7 @@ class LibraryStatusBar extends ConsumerWidget {
     final photos =
         ref.watch(cardCatalogProvider).value?.photos ?? const <PhotoEntity>[];
     final marked = ref.watch(markedForDeletionProvider);
+    final wanted = ref.watch(exportMarksProvider);
     final selection = ref.watch(cardSelectionProvider);
     final cardPath = selection is CardSelectionOpened ? selection.path : null;
 
@@ -151,7 +165,9 @@ class LibraryStatusBar extends ConsumerWidget {
     // no bytes to reclaim from them.
     var markedCount = 0;
     var markedBytes = 0;
+    var wantedCount = 0;
     for (final photo in photos) {
+      if (wanted.contains(photo.key.value)) wantedCount++;
       if (!marked.contains(photo.key.value)) continue;
       markedCount++;
       markedBytes += photo.totalBytes;
@@ -161,13 +177,14 @@ class LibraryStatusBar extends ConsumerWidget {
       photoCount: photos.length,
       markedCount: markedCount,
       markedBytes: markedBytes,
-      marksAreDurable: marked.durable,
+      wantedCount: wantedCount,
+      marksAreDurable: marked.durable && wanted.durable,
       // Where the user is decides which map applies: Enter opens from the grid
       // and returns from the viewer, and stating the wrong one is worse than
       // stating none.
       hints: ref.watch(viewerOpenProvider)
-          ? '←→ naviguer   O obscura   ⌘+/⌘− zoom   ⏎ retour   ⌫ marquer'
-          : '↑↓←→ naviguer   ⏎ ouvrir   ⌫ marquer à supprimer',
+          ? '←→ naviguer   O obscura   ⌘± zoom   ⏎ retour   ⌫ supprimer   E exporter'
+          : '↑↓←→ naviguer   ⏎ ouvrir   ⌫ supprimer   E exporter',
       cardFreeBytes: volume?.freeBytes,
       // The volume list can lag a freshly opened card; the path's last segment
       // is the same name, and a status bar that goes briefly blank reads as a

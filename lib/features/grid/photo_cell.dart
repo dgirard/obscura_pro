@@ -43,8 +43,10 @@ class PhotoCell extends ConsumerStatefulWidget {
     required this.targetShortSide,
     required this.selected,
     required this.marked,
+    this.wanted = false,
     this.placeholderColor,
     this.onToggleMark,
+    this.onToggleWanted,
   });
 
   final PhotoEntity photo;
@@ -58,6 +60,10 @@ class PhotoCell extends ConsumerStatefulWidget {
   /// recorded on the Mac and only acted on when the trash is emptied.
   final bool marked;
 
+  /// Marked for export: the other decision of a culling pass. Nothing is
+  /// written to the card for this one either.
+  final bool wanted;
+
   /// Mean colour of this photograph's thumbnail, when a previous session left
   /// one in the cache index. Null on a cold cache, where there is nothing
   /// truthful to paint and a neutral surface is shown instead.
@@ -67,6 +73,9 @@ class PhotoCell extends ConsumerStatefulWidget {
   /// keyboard shortcut with nothing on screen to announce it is not a feature
   /// the user has — it is one they have to be told about.
   final VoidCallback? onToggleMark;
+
+  /// Marks or unmarks the photograph as one to export.
+  final VoidCallback? onToggleWanted;
 
   @override
   ConsumerState<PhotoCell> createState() => _PhotoCellState();
@@ -95,16 +104,41 @@ class _PhotoCellState extends ConsumerState<PhotoCell> {
       wash: marked
           ? ObscuraColors.statusDelete.withValues(alpha: 0.34)
           : null,
-      badge: TileBadge(key: Key('badge-${photo.dcfPath}'), text: photo.formatBadge),
+      badge: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TileBadge(key: Key('badge-${photo.dcfPath}'), text: photo.formatBadge),
+          if (widget.wanted) ...[
+            const SizedBox(height: ObscuraSpacing.controlGap / 2),
+            TileBadge(
+              key: Key('wanted-${photo.dcfPath}'),
+              text: 'EXPORT',
+              color: ObscuraColors.statusExport,
+            ),
+          ],
+        ],
+      ),
       // Shown when marked, and offered on hover when not: the control and the
       // state are the same thing in the same place, so seeing one teaches the
       // other.
-      cornerOnHover: !marked,
-      corner: _TrashButton(
-        key: marked ? Key('marked-${photo.dcfPath}') : null,
-        buttonKey: Key('mark-${photo.dcfPath}'),
-        marked: marked,
-        onPressed: widget.onToggleMark,
+      cornerOnHover: !marked && !widget.wanted,
+      corner: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _TrashButton(
+            key: marked ? Key('marked-${photo.dcfPath}') : null,
+            buttonKey: Key('mark-${photo.dcfPath}'),
+            marked: marked,
+            onPressed: widget.onToggleMark,
+          ),
+          const SizedBox(width: ObscuraSpacing.controlGap / 2),
+          _WantedButton(
+            buttonKey: Key('want-${photo.dcfPath}'),
+            wanted: widget.wanted,
+            onPressed: widget.onToggleWanted,
+          ),
+        ],
       ),
     );
   }
@@ -207,6 +241,51 @@ class _TrashButton extends StatelessWidget {
             ),
             child: Icon(
               marked ? Icons.delete : Icons.delete_outline,
+              size: 13,
+              color: ObscuraColors.textPrimary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The other decision, and the way to make it.
+///
+/// Beside the trash and built the same way: a photographer looking at a frame
+/// is deciding between the two, and putting one control on the cell and the
+/// other behind a keystroke would make one of them the real one.
+class _WantedButton extends StatelessWidget {
+  const _WantedButton({
+    required this.buttonKey,
+    required this.wanted,
+    required this.onPressed,
+  });
+
+  final Key buttonKey;
+  final bool wanted;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: wanted ? 'Ne plus exporter (E)' : 'Marquer à exporter (E)',
+      child: GestureDetector(
+        key: buttonKey,
+        onTap: onPressed,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              color: wanted
+                  ? ObscuraColors.statusExport
+                  : ObscuraColors.canvas.withValues(alpha: 0.82),
+              borderRadius: BorderRadius.circular(ObscuraRadii.sm),
+            ),
+            child: Icon(
+              wanted ? Icons.ios_share : Icons.ios_share_outlined,
               size: 13,
               color: ObscuraColors.textPrimary,
             ),

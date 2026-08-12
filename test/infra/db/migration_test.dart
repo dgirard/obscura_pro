@@ -97,6 +97,11 @@ void main() {
 
     final layers = await db.compositionDao.layersOfPhoto(1);
     expect(layers.single.patternId, 7);
+
+    // And the table added on the way up is there and usable, on a database
+    // that predates it by three steps.
+    await db.compositionDao.markForExport(1);
+    expect(await db.compositionDao.markedForExport(), {'key-1'});
   });
 
   test('keeps an export written before it could say how large it was', () async {

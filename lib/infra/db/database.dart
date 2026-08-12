@@ -44,7 +44,15 @@ const durabilityPragmas = <String>[
 ];
 
 @DriftDatabase(
-  tables: [Patterns, Photos, LayerInstances, CropExports, TrashItems, ThumbCacheEntries],
+  tables: [
+    Patterns,
+    Photos,
+    LayerInstances,
+    CropExports,
+    ExportMarks,
+    TrashItems,
+    ThumbCacheEntries,
+  ],
   daos: [CatalogDao, CompositionDao, TrashDao, ThumbCacheDao],
 )
 class AppDatabase extends _$AppDatabase {
@@ -54,7 +62,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -94,6 +102,14 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(cropExports, cropExports.pixelWidth);
             await m.addColumn(cropExports, cropExports.pixelHeight);
             version = 4;
+          }
+
+          // v5 adds the export queue: the frames a photographer has decided
+          // they want, marked during the same pass as the ones they are
+          // throwing away.
+          if (version == 4) {
+            await m.createTable(exportMarks);
+            version = 5;
           }
 
           if (version != to) {

@@ -170,6 +170,31 @@ user's selection in the panel *is* the grant, and there is no way to reach a
 volume they have not pointed at. Seeing a card in the list and being allowed to
 read it are different things, and no amount of interface removes the difference.
 
+### The frames you want, marked in the same pass — 2026-08-12
+Asked for: marking the photographs to export. Culling makes two decisions about
+every frame — this one is going, that one is wanted — and the app only recorded
+one of them.
+
+`E` marks a photograph for export, from the grid and from the viewer, beside `⌫`
+and in the same places: a blue control on the cell next to the trash, a button
+in the viewer's action bar, a count in the status bar. Nothing is written to the
+card, and the mark is written to the Mac the moment it is made — schema v5, one
+row per photograph, keyed the way everything else about a photograph is keyed.
+
+The queue is a list of work rather than an attribute: the exports screen carries
+a panel that writes every marked frame, whole, and each mark comes off as its
+file lands. Stopped halfway, what is still marked is exactly what is left to do.
+One frame that fails does not stop the others, and it stays marked.
+
+"Whole" is meant literally: a Q3's full preview is 9520 x 6336, which is 1.5025
+rather than 1.5, so cutting the largest exact 3:2 would shave a strip off a
+photograph this queue promises to export entire. The rectangle is the whole
+frame; the ratio is carried for the file's name, where the nearest of the six is
+the honest label.
+
+Marks span every card this Mac has culled, so the panel counts what is on the
+open card and says how many more are waiting on a card that is in a drawer.
+
 ### An export says what it is doing — 2026-08-12
 Asked for: an indicator while the export runs and when it finishes. It had a
 disabled button reading "Export…" and, at the end, a line in the same grey as

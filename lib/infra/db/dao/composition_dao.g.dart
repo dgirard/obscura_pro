@@ -8,6 +8,7 @@ mixin _$CompositionDaoMixin on DatabaseAccessor<AppDatabase> {
   $PatternsTable get patterns => attachedDatabase.patterns;
   $LayerInstancesTable get layerInstances => attachedDatabase.layerInstances;
   $CropExportsTable get cropExports => attachedDatabase.cropExports;
+  $ExportMarksTable get exportMarks => attachedDatabase.exportMarks;
   CompositionDaoManager get managers => CompositionDaoManager(this);
 }
 
@@ -25,4 +26,6 @@ class CompositionDaoManager {
       );
   $$CropExportsTableTableManager get cropExports =>
       $$CropExportsTableTableManager(_db.attachedDatabase, _db.cropExports);
+  $$ExportMarksTableTableManager get exportMarks =>
+      $$ExportMarksTableTableManager(_db.attachedDatabase, _db.exportMarks);
 }

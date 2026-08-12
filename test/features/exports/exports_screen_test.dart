@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:obscura_pro/app/theme.dart';
 import 'package:obscura_pro/features/exports/export_store.dart';
+import 'package:obscura_pro/features/catalog/photo_entity.dart';
+import 'package:obscura_pro/features/catalog/stable_key.dart';
+import 'package:obscura_pro/features/exports/export_marks.dart';
 import 'package:obscura_pro/features/exports/exports_screen.dart';
 import 'package:obscura_pro/infra/finder/finder_channel.dart';
 import 'package:path/path.dart' as p;
@@ -13,8 +16,12 @@ import '../../infra/preview/tiff_fixture.dart';
 void main() {
   late InMemoryExportStore store;
   late FakeFinder finder;
+  late InMemoryExportMarkStore marks;
 
-  setUp(() => finder = FakeFinder());
+  setUp(() {
+    finder = FakeFinder();
+    marks = InMemoryExportMarkStore();
+  });
 
   /// Where an export would be.
   ///
@@ -73,6 +80,7 @@ void main() {
           exportImageProvider.overrideWithValue(
             (path) => MemoryImage(realJpeg(width: 12, height: 8)),
           ),
+          exportMarkStoreProvider.overrideWithValue(marks),
         ],
         child: MaterialApp(
           theme: buildObscuraTheme(),
@@ -82,6 +90,31 @@ void main() {
     );
     await tester.pump();
   }
+
+  testWidgets('offers no queue until something is marked', (tester) async {
+    await pump(tester, []);
+
+    expect(find.byKey(const Key('export-queue')), findsNothing);
+  });
+
+  testWidgets('counts what is waiting, and cannot run what is not here',
+      (tester) async {
+    marks = InMemoryExportMarkStore(initial: {_photo().key.value});
+    await pump(tester, []);
+    await tester.pump();
+
+    // The mark is there; the card it belongs to is not, so there is nothing to
+    // read the pixels from and the button says so by being unpressable.
+    expect(find.byKey(const Key('export-queue')), findsOneWidget);
+    expect(_text(tester, 'export-queue-count'), 'Rien à exporter sur cette carte');
+    expect(
+      tester
+          .widget<FilledButton>(find.byKey(const Key('export-queue-run')))
+          .onPressed,
+      isNull,
+    );
+    expect(find.textContaining('sur une autre carte'), findsOneWidget);
+  });
 
   testWidgets('says plainly when nothing has been exported', (tester) async {
     await pump(tester, []);
@@ -169,3 +202,17 @@ void main() {
   });
 }
 
+
+String _text(WidgetTester tester, String key) =>
+    tester.widget<Text>(find.byKey(Key(key))).data!;
+
+PhotoEntity _photo() => PhotoEntity(
+      radical: 'L1000001',
+      folder: '100LEICA',
+      key: StableKey.fromExif(
+        dcfRadical: '100LEICA/L1000001',
+        captureTime: DateTime.utc(2026, 3, 14, 9, 26, 53),
+        bodySerial: '5301234',
+      ),
+      files: const [],
+    );

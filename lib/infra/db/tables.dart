@@ -133,6 +133,34 @@ class LayerInstances extends Table {
   BoolColumn get obscura => boolean().withDefault(const Constant(false))();
 }
 
+/// Photographs the user has decided to export.
+///
+/// The other half of culling. `trash_item` records the frames that are going;
+/// this records the frames that are wanted, and it is a decision made in the
+/// same pass, with the same keyboard, about the same photograph — so it is kept
+/// the same way: on the Mac, keyed by the photo, written the moment it is made.
+///
+/// A row is a queue entry rather than a permanent attribute: it is removed when
+/// the file has been written, and what is left afterwards is the `crop_export`
+/// row and the file itself.
+class ExportMarks extends Table {
+  @override
+  String get tableName => 'export_mark';
+
+  IntColumn get id => integer().autoIncrement()();
+
+  IntColumn get photoId =>
+      integer().references(Photos, #id, onDelete: KeyAction.cascade)();
+
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  /// One mark per photograph: marking twice is the same decision.
+  @override
+  List<Set<Column<Object>>> get uniqueKeys => [
+        {photoId},
+      ];
+}
+
 /// Traceability of a non-destructive export.
 ///
 /// The card file is never modified: the crop lives here and the pixels are

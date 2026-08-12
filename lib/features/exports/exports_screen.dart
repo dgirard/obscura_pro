@@ -5,7 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme.dart';
 import '../../infra/finder/finder_channel.dart';
-import '../grid/grid_screen.dart' show LibraryGrid;
+import '../crop/export_service.dart' show ExportStage;
+import '../catalog/photo_entity.dart';
+import '../grid/grid_screen.dart' show LibraryGrid, cardCatalogProvider;
+import 'batch_export.dart';
+import 'export_marks.dart';
 import '../grid/thumbnail_tile.dart';
 import 'export_store.dart';
 
@@ -136,6 +140,7 @@ class _ExportsScreenState extends ConsumerState<ExportsScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _Header(count: exports.value?.length ?? 0),
+        const _Queue(),
         if (_failure != null)
           Padding(
             padding: const EdgeInsets.symmetric(
@@ -226,6 +231,158 @@ class _ExportsScreenState extends ConsumerState<ExportsScreen> {
     }
     return out;
   }
+}
+
+/// The frames marked for export, and the button that writes them.
+///
+/// It lives on this screen because this is where the files appear: pressing it
+/// somewhere else would mean going looking for the result. Nothing here touches
+/// the card — the originals stay exactly where the camera wrote them.
+class _Queue extends ConsumerWidget {
+  const _Queue();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final marks = ref.watch(exportMarksProvider);
+    final progress = ref.watch(batchExporterProvider);
+    final photos =
+        ref.watch(cardCatalogProvider).value?.photos ?? const <PhotoEntity>[];
+    final here = photos.where((p) => marks.contains(p.key.value)).length;
+    final elsewhere = marks.length - here;
+
+    if (marks.isEmpty && progress.isIdle) return const SizedBox.shrink();
+
+    return Container(
+      key: const Key('export-queue'),
+      margin: const EdgeInsets.fromLTRB(
+        ObscuraSpacing.overlayPadding,
+        ObscuraSpacing.overlayPadding,
+        ObscuraSpacing.overlayPadding,
+        0,
+      ),
+      padding: const EdgeInsets.all(ObscuraSpacing.overlayPadding),
+      decoration: BoxDecoration(
+        color: ObscuraColors.surfaceContainerLowest,
+        border: Border.all(color: ObscuraColors.border),
+        borderRadius: BorderRadius.circular(ObscuraRadii.base),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      here == 0
+                          ? 'Rien à exporter sur cette carte'
+                          : '$here photographie${here > 1 ? 's' : ''} '
+                              'marquée${here > 1 ? 's' : ''} à exporter',
+                      key: const Key('export-queue-count'),
+                      style: ObscuraTypography.bodyMedium,
+                    ),
+                    Text(
+                      elsewhere > 0
+                          // Marks span every card this Mac has culled, and the
+                          // bytes of a frame live on the card it was shot on.
+                          ? 'Plus $elsewhere sur une autre carte, qui '
+                              'attendront qu\'elle soit là.'
+                          : 'Le cadre entier, à la taille que la carte permet.',
+                      style: ObscuraTypography.bodySmall
+                          .copyWith(color: ObscuraColors.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: ObscuraSpacing.overlayPadding),
+              FilledButton.icon(
+                key: const Key('export-queue-run'),
+                onPressed: progress.running || here == 0
+                    ? null
+                    : () => ref.read(batchExporterProvider.notifier).run(photos),
+                icon: const Icon(Icons.ios_share, size: 16),
+                label: Text(
+                  progress.running
+                      ? '${progress.done} / ${progress.total}'
+                      : 'Exporter',
+                ),
+              ),
+            ],
+          ),
+          if (progress.running) ...[
+            const SizedBox(height: ObscuraSpacing.controlGap),
+            LinearProgressIndicator(
+              key: const Key('export-queue-progress'),
+              value: progress.total == 0
+                  ? null
+                  : progress.done / progress.total,
+              minHeight: ObscuraStrokes.selection,
+              color: ObscuraColors.statusExport,
+              backgroundColor: ObscuraColors.surfaceContainer,
+            ),
+            const SizedBox(height: ObscuraSpacing.controlGap / 2),
+            Text(
+              '${progress.current ?? ''} · ${_stageLabel(progress.stage)}',
+              key: const Key('export-queue-stage'),
+              style: ObscuraTypography.bodySmall
+                  .copyWith(color: ObscuraColors.textSecondary),
+            ),
+          ] else if (progress.done > 0 || progress.failures.isNotEmpty) ...[
+            const SizedBox(height: ObscuraSpacing.controlGap),
+            Row(
+              children: [
+                Icon(
+                  progress.failures.isEmpty
+                      ? Icons.check_circle_outline
+                      : Icons.warning_amber_rounded,
+                  size: 14,
+                  color: progress.failures.isEmpty
+                      ? ObscuraColors.statusExport
+                      : ObscuraColors.leicaRed,
+                ),
+                const SizedBox(width: ObscuraSpacing.controlGap / 2),
+                Expanded(
+                  child: Text(
+                    progress.failures.isEmpty
+                        ? '${progress.done} exporté'
+                            '${progress.done > 1 ? 's' : ''}.'
+                        : '${progress.done} exporté'
+                            '${progress.done > 1 ? 's' : ''} · '
+                            '${progress.failures.join(' · ')}',
+                    key: const Key('export-queue-result'),
+                    style: ObscuraTypography.bodySmall.copyWith(
+                      color: progress.failures.isEmpty
+                          ? ObscuraColors.statusExport
+                          : ObscuraColors.leicaRed,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          if (!marks.durable) ...[
+            const SizedBox(height: ObscuraSpacing.controlGap / 2),
+            Text(
+              'Ces marques sont à l\'écran mais n\'ont pas pu être '
+              'enregistrées : ${marks.failure}',
+              key: const Key('export-queue-volatile'),
+              style: ObscuraTypography.bodySmall
+                  .copyWith(color: ObscuraColors.leicaRed),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static String _stageLabel(ExportStage? stage) => switch (stage) {
+        ExportStage.reading => 'lecture',
+        ExportStage.rendering => 'recadrage',
+        ExportStage.writing => 'écriture',
+        null => 'préparation',
+      };
 }
 
 class _Header extends StatelessWidget {

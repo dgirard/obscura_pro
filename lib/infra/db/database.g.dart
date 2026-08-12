@@ -2509,6 +2509,262 @@ class CropExportsCompanion extends UpdateCompanion<CropExport> {
   }
 }
 
+class $ExportMarksTable extends ExportMarks
+    with TableInfo<$ExportMarksTable, ExportMark> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ExportMarksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _photoIdMeta = const VerificationMeta(
+    'photoId',
+  );
+  @override
+  late final GeneratedColumn<int> photoId = GeneratedColumn<int>(
+    'photo_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES photo (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, photoId, createdAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'export_mark';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ExportMark> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('photo_id')) {
+      context.handle(
+        _photoIdMeta,
+        photoId.isAcceptableOrUnknown(data['photo_id']!, _photoIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_photoIdMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {photoId},
+  ];
+  @override
+  ExportMark map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ExportMark(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      photoId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}photo_id'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ExportMarksTable createAlias(String alias) {
+    return $ExportMarksTable(attachedDatabase, alias);
+  }
+}
+
+class ExportMark extends DataClass implements Insertable<ExportMark> {
+  final int id;
+  final int photoId;
+  final DateTime createdAt;
+  const ExportMark({
+    required this.id,
+    required this.photoId,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['photo_id'] = Variable<int>(photoId);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  ExportMarksCompanion toCompanion(bool nullToAbsent) {
+    return ExportMarksCompanion(
+      id: Value(id),
+      photoId: Value(photoId),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory ExportMark.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ExportMark(
+      id: serializer.fromJson<int>(json['id']),
+      photoId: serializer.fromJson<int>(json['photoId']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'photoId': serializer.toJson<int>(photoId),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  ExportMark copyWith({int? id, int? photoId, DateTime? createdAt}) =>
+      ExportMark(
+        id: id ?? this.id,
+        photoId: photoId ?? this.photoId,
+        createdAt: createdAt ?? this.createdAt,
+      );
+  ExportMark copyWithCompanion(ExportMarksCompanion data) {
+    return ExportMark(
+      id: data.id.present ? data.id.value : this.id,
+      photoId: data.photoId.present ? data.photoId.value : this.photoId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExportMark(')
+          ..write('id: $id, ')
+          ..write('photoId: $photoId, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, photoId, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ExportMark &&
+          other.id == this.id &&
+          other.photoId == this.photoId &&
+          other.createdAt == this.createdAt);
+}
+
+class ExportMarksCompanion extends UpdateCompanion<ExportMark> {
+  final Value<int> id;
+  final Value<int> photoId;
+  final Value<DateTime> createdAt;
+  const ExportMarksCompanion({
+    this.id = const Value.absent(),
+    this.photoId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  ExportMarksCompanion.insert({
+    this.id = const Value.absent(),
+    required int photoId,
+    this.createdAt = const Value.absent(),
+  }) : photoId = Value(photoId);
+  static Insertable<ExportMark> custom({
+    Expression<int>? id,
+    Expression<int>? photoId,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (photoId != null) 'photo_id': photoId,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  ExportMarksCompanion copyWith({
+    Value<int>? id,
+    Value<int>? photoId,
+    Value<DateTime>? createdAt,
+  }) {
+    return ExportMarksCompanion(
+      id: id ?? this.id,
+      photoId: photoId ?? this.photoId,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (photoId.present) {
+      map['photo_id'] = Variable<int>(photoId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExportMarksCompanion(')
+          ..write('id: $id, ')
+          ..write('photoId: $photoId, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $TrashItemsTable extends TrashItems
     with TableInfo<$TrashItemsTable, TrashItem> {
   @override
@@ -3759,6 +4015,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PhotosTable photos = $PhotosTable(this);
   late final $LayerInstancesTable layerInstances = $LayerInstancesTable(this);
   late final $CropExportsTable cropExports = $CropExportsTable(this);
+  late final $ExportMarksTable exportMarks = $ExportMarksTable(this);
   late final $TrashItemsTable trashItems = $TrashItemsTable(this);
   late final $ThumbCacheEntriesTable thumbCacheEntries =
       $ThumbCacheEntriesTable(this);
@@ -3777,6 +4034,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     photos,
     layerInstances,
     cropExports,
+    exportMarks,
     trashItems,
     thumbCacheEntries,
   ];
@@ -3795,6 +4053,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('crop_export', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'photo',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('export_mark', kind: UpdateKind.delete)],
     ),
     WritePropagation(
       on: TableUpdateQuery.onTableName(
@@ -4178,6 +4443,24 @@ final class $$PhotosTableReferences
     );
   }
 
+  static MultiTypedResultKey<$ExportMarksTable, List<ExportMark>>
+  _exportMarksRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.exportMarks,
+    aliasName: 'photo__id__export_mark__photo_id',
+  );
+
+  $$ExportMarksTableProcessedTableManager get exportMarksRefs {
+    final manager = $$ExportMarksTableTableManager(
+      $_db,
+      $_db.exportMarks,
+    ).filter((f) => f.photoId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_exportMarksRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
   static MultiTypedResultKey<$TrashItemsTable, List<TrashItem>>
   _trashItemsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.trashItems,
@@ -4328,6 +4611,31 @@ class $$PhotosTableFilterComposer
           }) => $$CropExportsTableFilterComposer(
             $db: $db,
             $table: $db.cropExports,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> exportMarksRefs(
+    Expression<bool> Function($$ExportMarksTableFilterComposer f) f,
+  ) {
+    final $$ExportMarksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.exportMarks,
+      getReferencedColumn: (t) => t.photoId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ExportMarksTableFilterComposer(
+            $db: $db,
+            $table: $db.exportMarks,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -4563,6 +4871,31 @@ class $$PhotosTableAnnotationComposer
     return f(composer);
   }
 
+  Expression<T> exportMarksRefs<T extends Object>(
+    Expression<T> Function($$ExportMarksTableAnnotationComposer a) f,
+  ) {
+    final $$ExportMarksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.exportMarks,
+      getReferencedColumn: (t) => t.photoId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ExportMarksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.exportMarks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
   Expression<T> trashItemsRefs<T extends Object>(
     Expression<T> Function($$TrashItemsTableAnnotationComposer a) f,
   ) {
@@ -4631,6 +4964,7 @@ class $$PhotosTableTableManager
           PrefetchHooks Function({
             bool layerInstancesRefs,
             bool cropExportsRefs,
+            bool exportMarksRefs,
             bool trashItemsRefs,
             bool thumbCacheEntriesRefs,
           })
@@ -4708,6 +5042,7 @@ class $$PhotosTableTableManager
               ({
                 layerInstancesRefs = false,
                 cropExportsRefs = false,
+                exportMarksRefs = false,
                 trashItemsRefs = false,
                 thumbCacheEntriesRefs = false,
               }) {
@@ -4716,6 +5051,7 @@ class $$PhotosTableTableManager
                   explicitlyWatchedTables: [
                     if (layerInstancesRefs) db.layerInstances,
                     if (cropExportsRefs) db.cropExports,
+                    if (exportMarksRefs) db.exportMarks,
                     if (trashItemsRefs) db.trashItems,
                     if (thumbCacheEntriesRefs) db.thumbCacheEntries,
                   ],
@@ -4758,6 +5094,27 @@ class $$PhotosTableTableManager
                                 table,
                                 p0,
                               ).cropExportsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.photoId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (exportMarksRefs)
+                        await $_getPrefetchedData<
+                          Photo,
+                          $PhotosTable,
+                          ExportMark
+                        >(
+                          currentTable: table,
+                          referencedTable: $$PhotosTableReferences
+                              ._exportMarksRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$PhotosTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).exportMarksRefs,
                           referencedItemsForCurrentItem:
                               (item, referencedItems) => referencedItems.where(
                                 (e) => e.photoId == item.id,
@@ -4829,6 +5186,7 @@ typedef $$PhotosTableProcessedTableManager =
       PrefetchHooks Function({
         bool layerInstancesRefs,
         bool cropExportsRefs,
+        bool exportMarksRefs,
         bool trashItemsRefs,
         bool thumbCacheEntriesRefs,
       })
@@ -5842,6 +6200,279 @@ typedef $$CropExportsTableProcessedTableManager =
       CropExport,
       PrefetchHooks Function({bool photoId})
     >;
+typedef $$ExportMarksTableCreateCompanionBuilder =
+    ExportMarksCompanion Function({
+      Value<int> id,
+      required int photoId,
+      Value<DateTime> createdAt,
+    });
+typedef $$ExportMarksTableUpdateCompanionBuilder =
+    ExportMarksCompanion Function({
+      Value<int> id,
+      Value<int> photoId,
+      Value<DateTime> createdAt,
+    });
+
+final class $$ExportMarksTableReferences
+    extends BaseReferences<_$AppDatabase, $ExportMarksTable, ExportMark> {
+  $$ExportMarksTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $PhotosTable _photoIdTable(_$AppDatabase db) =>
+      db.photos.createAlias('export_mark__photo_id__photo__id');
+
+  $$PhotosTableProcessedTableManager get photoId {
+    final $_column = $_itemColumn<int>('photo_id')!;
+
+    final manager = $$PhotosTableTableManager(
+      $_db,
+      $_db.photos,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_photoIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$ExportMarksTableFilterComposer
+    extends Composer<_$AppDatabase, $ExportMarksTable> {
+  $$ExportMarksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$PhotosTableFilterComposer get photoId {
+    final $$PhotosTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.photoId,
+      referencedTable: $db.photos,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PhotosTableFilterComposer(
+            $db: $db,
+            $table: $db.photos,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ExportMarksTableOrderingComposer
+    extends Composer<_$AppDatabase, $ExportMarksTable> {
+  $$ExportMarksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$PhotosTableOrderingComposer get photoId {
+    final $$PhotosTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.photoId,
+      referencedTable: $db.photos,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PhotosTableOrderingComposer(
+            $db: $db,
+            $table: $db.photos,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ExportMarksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ExportMarksTable> {
+  $$ExportMarksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$PhotosTableAnnotationComposer get photoId {
+    final $$PhotosTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.photoId,
+      referencedTable: $db.photos,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PhotosTableAnnotationComposer(
+            $db: $db,
+            $table: $db.photos,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ExportMarksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ExportMarksTable,
+          ExportMark,
+          $$ExportMarksTableFilterComposer,
+          $$ExportMarksTableOrderingComposer,
+          $$ExportMarksTableAnnotationComposer,
+          $$ExportMarksTableCreateCompanionBuilder,
+          $$ExportMarksTableUpdateCompanionBuilder,
+          (ExportMark, $$ExportMarksTableReferences),
+          ExportMark,
+          PrefetchHooks Function({bool photoId})
+        > {
+  $$ExportMarksTableTableManager(_$AppDatabase db, $ExportMarksTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ExportMarksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ExportMarksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ExportMarksTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> photoId = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => ExportMarksCompanion(
+                id: id,
+                photoId: photoId,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int photoId,
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => ExportMarksCompanion.insert(
+                id: id,
+                photoId: photoId,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$ExportMarksTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({photoId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (photoId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.photoId,
+                                referencedTable: $$ExportMarksTableReferences
+                                    ._photoIdTable(db),
+                                referencedColumn: $$ExportMarksTableReferences
+                                    ._photoIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$ExportMarksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ExportMarksTable,
+      ExportMark,
+      $$ExportMarksTableFilterComposer,
+      $$ExportMarksTableOrderingComposer,
+      $$ExportMarksTableAnnotationComposer,
+      $$ExportMarksTableCreateCompanionBuilder,
+      $$ExportMarksTableUpdateCompanionBuilder,
+      (ExportMark, $$ExportMarksTableReferences),
+      ExportMark,
+      PrefetchHooks Function({bool photoId})
+    >;
 typedef $$TrashItemsTableCreateCompanionBuilder =
     TrashItemsCompanion Function({
       Value<int> id,
@@ -6680,6 +7311,8 @@ class $AppDatabaseManager {
       $$LayerInstancesTableTableManager(_db, _db.layerInstances);
   $$CropExportsTableTableManager get cropExports =>
       $$CropExportsTableTableManager(_db, _db.cropExports);
+  $$ExportMarksTableTableManager get exportMarks =>
+      $$ExportMarksTableTableManager(_db, _db.exportMarks);
   $$TrashItemsTableTableManager get trashItems =>
       $$TrashItemsTableTableManager(_db, _db.trashItems);
   $$ThumbCacheEntriesTableTableManager get thumbCacheEntries =>

@@ -125,8 +125,8 @@ void main() {
   });
 
   group('schema', () {
-    test('creates every table cleanly at schemaVersion 4', () async {
-      expect(db.schemaVersion, 4);
+    test('creates every table cleanly at schemaVersion 5', () async {
+      expect(db.schemaVersion, 5);
 
       final tables = await db
           .customSelect("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
@@ -137,6 +137,7 @@ void main() {
         tables,
         containsAll(<String>[
           'crop_export',
+          'export_mark',
           'layer_instance',
           'pattern',
           'photo',
