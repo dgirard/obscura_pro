@@ -15,16 +15,38 @@ import 'settings_store.dart';
 /// bad one. The fourth is not a choice at all — it is what the app does with
 /// video — and it is here because a user is entitled to know, and because
 /// silence about a card's contents is the one thing this app must never do.
-class SettingsScreen extends ConsumerWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  /// Set when a preference could not be written.
+  ///
+  /// Shown rather than swallowed: these choices describe what the app will do
+  /// to a photographer's card, and one that looks active but was never saved is
+  /// the worst of both — it reverts on the next launch without ever saying so.
+  String? _failure;
+
+  Future<void> _save(Settings next) async {
+    final written = await ref.read(settingsProvider.notifier).save(next);
+    if (!mounted) return;
+    setState(() {
+      _failure = written
+          ? null
+          : 'Réglage non enregistré : le fichier de préférences n\'a pas pu '
+              'être écrit. Le choix précédent reste en vigueur.';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider).value;
     if (settings == null) {
       return const Center(child: CircularProgressIndicator());
     }
-    final notifier = ref.read(settingsProvider.notifier);
     final catalog = ref.watch(cardCatalogProvider).value;
     final videos = catalog?.unsupportedFiles ?? const <String>[];
 
@@ -34,6 +56,15 @@ class SettingsScreen extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Réglages', style: ObscuraTypography.headlineLarge),
+          if (_failure != null) ...[
+            const SizedBox(height: ObscuraSpacing.overlayPadding),
+            Text(
+              _failure!,
+              key: const Key('settings-failure'),
+              style: ObscuraTypography.bodySmall
+                  .copyWith(color: ObscuraColors.leicaRed),
+            ),
+          ],
           const SizedBox(height: ObscuraSpacing.overlayPadding * 2),
 
           _Section(
@@ -62,9 +93,7 @@ class SettingsScreen extends ConsumerWidget {
                       confirmButtonText: 'Choisir',
                     );
                     if (chosen != null) {
-                      await notifier.save(
-                        settings.copyWith(exportFolder: chosen),
-                      );
+                      await _save(settings.copyWith(exportFolder: chosen));
                     }
                   },
                   child: const Text('Choisir…'),
@@ -72,9 +101,8 @@ class SettingsScreen extends ConsumerWidget {
                 if (settings.exportFolder != null) ...[
                   const SizedBox(width: ObscuraSpacing.controlGap),
                   TextButton(
-                    onPressed: () => notifier.save(
-                      settings.copyWith(clearExportFolder: true),
-                    ),
+                    onPressed: () =>
+                        _save(settings.copyWith(clearExportFolder: true)),
                     child: const Text('Par défaut'),
                   ),
                 ],
@@ -97,7 +125,7 @@ class SettingsScreen extends ConsumerWidget {
                       'Suppr marque, rien ne quitte la carte avant que vous ne '
                       'vidiez la corbeille. La carte peut être retirée à tout '
                       'moment sans conséquence — c\'est ce qu\'il faut pour trier.',
-                  onTap: () => notifier.save(
+                  onTap: () => _save(
                     settings.copyWith(deletionMode: DeletionMode.deferred),
                   ),
                 ),
@@ -109,7 +137,7 @@ class SettingsScreen extends ConsumerWidget {
                       'Chaque suppression copie les originaux sur le Mac, les '
                       'vérifie par empreinte, puis seulement les retire de la '
                       'carte. Plus lent, et libère la carte au fur et à mesure.',
-                  onTap: () => notifier.save(
+                  onTap: () => _save(
                     settings.copyWith(deletionMode: DeletionMode.immediate),
                   ),
                 ),
@@ -126,9 +154,8 @@ class SettingsScreen extends ConsumerWidget {
                   key: const Key('settings-spotlight'),
                   value: settings.suppressSpotlight,
                   activeThumbColor: ObscuraColors.leicaRed,
-                  onChanged: (value) => notifier.save(
-                    settings.copyWith(suppressSpotlight: value),
-                  ),
+                  onChanged: (value) =>
+                      _save(settings.copyWith(suppressSpotlight: value)),
                 ),
                 const SizedBox(width: ObscuraSpacing.controlGap),
                 Text(

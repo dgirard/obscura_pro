@@ -112,13 +112,24 @@ class SettingsStore {
     }
   }
 
-  Future<void> save(Settings settings) async {
-    final file = await _file();
-    await file.parent.create(recursive: true);
-    await file.writeAsString(
-      const JsonEncoder.withIndent('  ').convert(settings.toJson()),
-      flush: true,
-    );
+  /// Whether the preferences reached the disk.
+  ///
+  /// Returns rather than throws, because no preference is worth taking the app
+  /// down over — but it does report, because a screen that shows a setting as
+  /// active when the write failed is telling the user something untrue about
+  /// what the app will do to their card.
+  Future<bool> save(Settings settings) async {
+    try {
+      final file = await _file();
+      await file.parent.create(recursive: true);
+      await file.writeAsString(
+        const JsonEncoder.withIndent('  ').convert(settings.toJson()),
+        flush: true,
+      );
+      return true;
+    } on Object {
+      return false;
+    }
   }
 }
 
@@ -130,9 +141,15 @@ class SettingsNotifier extends AsyncNotifier<Settings> {
 
   /// Named `save` rather than `update`: AsyncNotifier already has an `update`
   /// with quite different semantics, and shadowing it would be a trap.
-  Future<void> save(Settings next) async {
-    state = AsyncData(next);
-    await ref.read(settingsStoreProvider).save(next);
+  ///
+  /// The write is awaited before the state moves. Showing the new value first
+  /// and writing afterwards makes the screen agree with the user rather than
+  /// with the disk: a failed write left a setting looking active for the rest
+  /// of the session and quietly reverting on the next launch.
+  Future<bool> save(Settings next) async {
+    final written = await ref.read(settingsStoreProvider).save(next);
+    if (written) state = AsyncData(next);
+    return written;
   }
 }
 

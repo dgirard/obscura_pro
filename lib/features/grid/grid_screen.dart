@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 
 import '../../app/shortcuts.dart';
 import '../../app/theme.dart';
@@ -12,6 +14,7 @@ import '../../app/app_shell.dart';
 import '../../infra/safety/io_errors.dart';
 import '../../infra/safety/parasite_guard.dart';
 import '../settings/settings_screen.dart';
+import '../settings/settings_store.dart';
 import '../trash/trash_screen.dart';
 import '../viewer/viewer_screen.dart';
 import 'photo_cell.dart';
@@ -33,15 +36,29 @@ final cardOpenProvider = FutureProvider<CardOpenReport>((ref) async {
   final root = selection.path;
 
   const guard = ParasiteGuard();
-  final debris = await guard.removeOwnDebris(root);
+  // One walk of the card, not two. `removeOwnDebris` scans internally, so
+  // calling it and then scanning again crossed every directory of a 941-frame
+  // card twice before a single thumbnail appeared. Clearing our own leftovers
+  // cannot change what is foreign, so one report answers both questions.
+  final found = await guard.scan(root);
+  final debris = await guard.remove(found.ourOwnDebris.toList());
 
   final trash = await ref.watch(trashServiceProvider.future);
   final reconciled = await trash.reconcile(cardRoot: root);
 
-  final parasites = await guard.scan(root);
+  // The only write this app ever makes to a card that is not a deletion, and it
+  // happens solely because the user turned it on in Réglages, where the switch
+  // says it will and states what it costs. Written only when absent, so an
+  // opted-in card is not written to again on every open.
+  final settings = await ref.watch(settingsProvider.future);
+  if (settings.suppressSpotlight &&
+      !await File(p.join(root, SpotlightPolicy.markerName)).exists()) {
+    await SpotlightPolicy.optIn(root);
+  }
+
   return CardOpenReport(
     debrisRemoved: debris.removed,
-    parasites: parasites.foreign.toList(),
+    parasites: found.foreign.toList(),
     writable: await cardAcceptsWrites(root),
     reconciled: reconciled.resolved.length,
     losses: reconciled.unresolvedLosses,

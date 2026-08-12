@@ -316,25 +316,186 @@ void main() {
       );
     });
 
-    test('a crash mid-restore leaves no debris a camera could see', () async {
-      await movedPhoto();
+    for (final step in [
+      'restore.beforeIntent',
+      'restore.beforeWrite',
+      'restore.beforeOutcome',
+    ]) {
+      test('a crash at $step leaves no debris a camera could see', () async {
+        final photo = await movedPhoto();
 
-      await expectLater(
-        serviceCrashingAt('restore.beforeOutcome')
-            .restoreToCard(cardRoot: card.path),
-        throwsA(isA<_Crash>()),
+        await expectLater(
+          serviceCrashingAt(step).restoreToCard(cardRoot: card.path),
+          throwsA(isA<_Crash>()),
+        );
+
+        // Everything actually on the card, measured against the camera files
+        // that belong there. Filtering this list by `isCardTempName` before
+        // asserting `isCardTempName` — which is what this test used to do —
+        // removes the only entries that could fail it, and a file with a
+        // camera-lookalike name is precisely the debris that matters: a
+        // photographer finds it on their card and dares not touch it.
+        final belongs = photo.files.map((f) => f.name).toSet();
+        final present = Directory(p.join(card.path, 'DCIM', '100LEICA'))
+            .listSync()
+            .map((e) => p.basename(e.path))
+            .toSet();
+
+        for (final name in present.difference(belongs)) {
+          expect(
+            isCardTempName(name),
+            isTrue,
+            reason: '$name survived on the card without the reserved prefix, '
+                'so the card-safety pass cannot recognise it as ours',
+          );
+        }
+
+        await serviceCrashingAt(null).reconcile(cardRoot: card.path);
+        await expectSettled([photo]);
+      });
+    }
+
+    test('a card that goes away mid-write leaves the Mac copy authoritative',
+        () async {
+      final photo = await movedPhoto();
+      final service = TrashService(
+        db: db,
+        macTrashRoot: macTrash,
+        copyOverride: ({required source, required destination, tempName}) async =>
+            CopyVolumeGone(destination.path),
       );
 
-      final leftovers = Directory(p.join(card.path, 'DCIM', '100LEICA'))
-          .listSync()
-          .map((e) => p.basename(e.path))
-          .where(isCardTempName);
-      // Any debris that does survive carries the reserved prefix, so the
-      // card-safety pass can recognise it as ours and remove it — rather than
-      // leaving a photographer with a file on their card they dare not touch.
-      for (final name in leftovers) {
-        expect(name.startsWith('~OBSCURA-'), isTrue);
+      final report = await service.restoreToCard(cardRoot: card.path);
+
+      // Nothing reached the card, so the rescued bytes stay the only copy and
+      // the row goes back to saying exactly that.
+      expect(report.isClean, isFalse);
+      expect(
+        File(p.join(macTrash.path, photo.key.value, 'L1000001.DNG')).existsSync(),
+        isTrue,
+      );
+      expect(
+        (await states())['DCIM/100LEICA/L1000001.DNG'],
+        TrashState.movedToMacTrash,
+      );
+    });
+
+    test('a cleanup unlink that fails is not recorded as a clean card', () async {
+      final photo = await movedPhoto();
+      // The rescued copy no longer hashes to what left the card, and the
+      // removal of the bad card write cannot be proved. Every row of the
+      // entity, not just the first: which file that is is not the test's to
+      // assume.
+      for (final item
+          in await db.trashDao.itemsInState(TrashState.movedToMacTrash)) {
+        await db.trashDao.commitOutcome(
+          item.id,
+          TrashState.movedToMacTrash,
+          sourceHash: 'not-the-hash-that-left-the-card',
+        );
       }
+      final service = TrashService(
+        db: db,
+        macTrashRoot: macTrash,
+        unlinkOverride: (file) async => const UnlinkFailed('read-only card'),
+      );
+
+      final report = await service.restoreToCard(cardRoot: card.path);
+
+      // The claim the app must never make is that the card is as it was.
+      expect(
+        (await states())['DCIM/100LEICA/L1000001.DNG'],
+        TrashState.uncertain,
+      );
+      expect(
+        report.conflicts.map((c) => c.detail).join(' '),
+        contains('non vérifié'),
+      );
+      expect(
+        File(p.join(macTrash.path, photo.key.value, 'L1000001.DNG')).existsSync(),
+        isTrue,
+      );
+    });
+  });
+
+  group('reconciling an interrupted restore', () {
+    /// One row put back into `restoringToCard`, as an interrupted run leaves it.
+    ///
+    /// The row is chosen by its own `cardRelativePath` rather than by taking
+    /// the first of a set: a RAW+JPG entity has two, and a test that copies one
+    /// file back while asserting about the other passes or fails on row order.
+    Future<int> rowRestoringToCard({required bool fileOnCard}) async {
+      await card.addPhoto('L1000001');
+      final photo = (await catalogue()).single;
+      final service = serviceCrashingAt(null);
+      await service.mark(photo);
+      await service.moveToMacTrash(photo);
+      final item = (await db.trashDao.itemsInState(TrashState.movedToMacTrash))
+          .firstWhere((i) => i.cardRelativePath.endsWith('.DNG'));
+      await db.trashDao.recordIntent(item.id, TrashState.restoringToCard);
+      if (fileOnCard) {
+        await File(item.macTrashPath!)
+            .copy(p.join(card.path, item.cardRelativePath));
+      }
+      return item.id;
+    }
+
+    test('the card write landed, so the photograph is back', () async {
+      final id = await rowRestoringToCard(fileOnCard: true);
+
+      await serviceCrashingAt(null).reconcile(cardRoot: card.path);
+
+      final states = await db.trashDao.itemsInState(TrashState.onCard);
+      expect(states.map((i) => i.id), contains(id));
+    });
+
+    test('the card write did not land, so the Mac copy is still it', () async {
+      final id = await rowRestoringToCard(fileOnCard: false);
+
+      await serviceCrashingAt(null).reconcile(cardRoot: card.path);
+
+      final states =
+          await db.trashDao.itemsInState(TrashState.movedToMacTrash);
+      expect(states.map((i) => i.id), contains(id));
+    });
+  });
+
+  group('emptying the trash when the card leaves', () {
+    test('stops at the file it was on, and counts the entity once', () async {
+      await card.addPhoto('L1000001');
+      await card.addPhoto('L1000002');
+      final photos = await catalogue();
+      // A RAW+JPG pair: without a break after the volume goes, the sibling
+      // file records an intent and retries against a card known to be gone.
+      expect(photos.first.files.length, greaterThan(1));
+      final marking = serviceCrashingAt(null);
+      for (final photo in photos) {
+        await marking.mark(photo);
+      }
+
+      final report = await TrashService(
+        db: db,
+        macTrashRoot: macTrash,
+        unlinkOverride: (file) async => VolumeGone(file.path),
+      ).emptyTrash(photos);
+
+      expect(report.haltedByVolumeLoss, isTrue);
+      // Once per photograph, not once per file of it.
+      expect(report.uncertain.length, report.uncertain.toSet().length);
+      expect(report.uncertain, hasLength(photos.length));
+    });
+  });
+
+  group('the outcome families', () {
+    test('each carry their own vanished-volume case', () {
+      // Not decoration. These are two separate sealed hierarchies, and the bug
+      // this guards was one family's value cast into the other — which compiles
+      // cleanly and throws only when a card is actually pulled, on the one path
+      // the whole file exists to survive.
+      expect(const VolumeGone('/Volumes/X'), isA<UnlinkOutcome>());
+      expect(const VolumeGone('/Volumes/X'), isNot(isA<CopyOutcome>()));
+      expect(const CopyVolumeGone('/Volumes/X'), isA<CopyOutcome>());
+      expect(const CopyVolumeGone('/Volumes/X'), isNot(isA<UnlinkOutcome>()));
     });
   });
 }

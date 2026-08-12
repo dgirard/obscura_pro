@@ -28,6 +28,8 @@ class TrashService {
     required AppDatabase db,
     required this.macTrashRoot,
     this.onStep,
+    this.unlinkOverride,
+    this.copyOverride,
   }) : _db = db;
 
   /// Called at every boundary between a durable write and a card operation.
@@ -38,7 +40,40 @@ class TrashService {
   @visibleForTesting
   final void Function(String step)? onStep;
 
+  /// Stand-ins for the two card operations, for tests only.
+  ///
+  /// A vanished volume is the failure this class is built around and the one it
+  /// cannot be made to produce on demand: [volumeRootOf] only recognises a path
+  /// under `/Volumes`, and a test cannot mount and pull a real card. Without a
+  /// seam here the `VolumeGone` arms of every switch below are unreachable from
+  /// the suite — which is exactly how a cast that throws on that path, and a
+  /// missing `break` after it, both survived review. Production leaves these
+  /// null and calls the real functions directly.
+  @visibleForTesting
+  final Future<UnlinkOutcome> Function(File file)? unlinkOverride;
+
+  @visibleForTesting
+  final Future<CopyOutcome> Function({
+    required File source,
+    required File destination,
+    String? tempName,
+  })? copyOverride;
+
   void _step(String name) => onStep?.call(name);
+
+  Future<UnlinkOutcome> _unlink(File file) =>
+      (unlinkOverride ?? verifiedUnlink)(file);
+
+  Future<CopyOutcome> _copy({
+    required File source,
+    required File destination,
+    String? tempName,
+  }) =>
+      (copyOverride ?? copyVerified)(
+        source: source,
+        destination: destination,
+        tempName: tempName,
+      );
 
   final AppDatabase _db;
 
@@ -159,7 +194,7 @@ class TrashService {
         _step('empty.beforeIntent');
         await _trash.recordIntent(item.id, TrashState.deleting);
         _step('empty.beforeUnlink');
-        final outcome = await verifiedUnlink(File(file.path));
+        final outcome = await _unlink(File(file.path));
         _step('empty.beforeOutcome');
 
         switch (outcome) {
@@ -186,6 +221,13 @@ class TrashService {
             ));
             entityDeleted = false;
         }
+
+        // The doc above promises this stops the moment the volume goes away,
+        // and this is where it keeps that promise. Without it the sibling file
+        // of a RAW+JPG pair records an intent and retries an unlink against a
+        // card already known to be gone, and the same photograph is counted
+        // uncertain once per file.
+        if (stoppedEarly) break;
       }
 
       if (entityDeleted && !stoppedEarly) deleted.add(photo.dcfPath);
@@ -253,12 +295,12 @@ class TrashService {
       _step('move.beforeIntent');
       await _trash.recordIntent(item.id, TrashState.movingToMacTrash);
       _step('move.beforeCopy');
-      final copy = await copyVerified(source: File(file.path), destination: destination);
+      final copy = await _copy(source: File(file.path), destination: destination);
       _step('move.beforeUnlink');
 
       switch (copy) {
         case CopyVerified(:final path, :final hash):
-          final unlink = await verifiedUnlink(File(file.path));
+          final unlink = await _unlink(File(file.path));
           _step('move.beforeOutcome');
           if (unlink is Unlinked || unlink is AlreadyAbsent) {
             await _trash.commitOutcome(
@@ -298,6 +340,17 @@ class TrashService {
           ));
         case CopySourceMissing():
           await _trash.commitOutcome(item.id, TrashState.deleted);
+        case CopyVolumeGone():
+          // The card left mid-copy. Nothing can be observed about it, so the
+          // row says so and the original is presumed still there — which is the
+          // truthful answer, because no unlink was reached.
+          await _trash.commitOutcome(item.id, TrashState.uncertain);
+          failed.add(TrashConflict(
+            dcfPath: photo.dcfPath,
+            path: file.path,
+            reason: TrashConflictReason.ioError,
+            detail: 'la carte a disparu pendant la copie',
+          ));
         case CopyFailed(:final reason):
           await _trash.commitOutcome(item.id, TrashState.uncertain);
           failed.add(TrashConflict(
@@ -383,7 +436,7 @@ class TrashService {
       _step('restore.beforeIntent');
       await _trash.recordIntent(item.id, TrashState.restoringToCard);
       _step('restore.beforeWrite');
-      final copy = await copyVerified(
+      final copy = await _copy(
         source: macCopy,
         destination: target,
         tempName: cardTempNameFor(p.basename(target.path)),
@@ -396,14 +449,33 @@ class TrashService {
           // from, and the source verifies against the hash recorded when the
           // original left the card. Both, or the Mac copy stays.
           if (item.sourceHash != null && item.sourceHash != hash) {
-            conflicts.add(TrashConflict(
-              dcfPath: photoRow.radicalDcf,
-              path: target.path,
-              reason: TrashConflictReason.copyDidNotVerify,
-              detail: 'the rescued copy no longer hashes to what left the card',
-            ));
-            await verifiedUnlink(target);
-            await _trash.commitOutcome(item.id, TrashState.movedToMacTrash);
+            // Take the card write back — and observe that it went, rather than
+            // assuming it did. Committing `movedToMacTrash` on the strength of
+            // an unlink nobody looked at would leave an unverified file sitting
+            // at a DCF name while the database swore the card was clean, and
+            // the row would no longer be in flight for reconcile to catch.
+            final removed = await _unlink(target);
+            switch (removed) {
+              case Unlinked() || AlreadyAbsent():
+                await _trash.commitOutcome(item.id, TrashState.movedToMacTrash);
+                conflicts.add(TrashConflict(
+                  dcfPath: photoRow.radicalDcf,
+                  path: target.path,
+                  reason: TrashConflictReason.copyDidNotVerify,
+                  detail: 'la copie sauvée ne correspond plus à ce qui a quitté la carte',
+                ));
+              case UnlinkFailed() || VolumeGone():
+                // The rescued original is still on the Mac, so nothing is lost;
+                // what cannot be claimed is that the card is as it was.
+                await _trash.commitOutcome(item.id, TrashState.uncertain);
+                conflicts.add(TrashConflict(
+                  dcfPath: photoRow.radicalDcf,
+                  path: target.path,
+                  reason: TrashConflictReason.ioError,
+                  detail: 'un fichier non vérifié est resté sur la carte : '
+                      'la copie d\'origine reste sur le Mac',
+                ));
+            }
             continue;
           }
           await _finishRestore(item.id, macCopy);
@@ -416,7 +488,10 @@ class TrashService {
             reason: TrashConflictReason.copyDidNotVerify,
           ));
         case CopySourceMissing():
+        case CopyVolumeGone():
         case CopyFailed():
+          // In every one of these the card write did not complete, so the Mac
+          // copy remains the only copy and the row goes back to saying so.
           await _trash.commitOutcome(item.id, TrashState.movedToMacTrash);
           conflicts.add(TrashConflict(
             dcfPath: photoRow.radicalDcf,
@@ -435,7 +510,7 @@ class TrashService {
   /// crash between the two leaves a duplicate, while the reverse leaves nothing.
   Future<void> _finishRestore(int itemId, File macCopy) async {
     await _trash.commitOutcome(itemId, TrashState.onCard);
-    await verifiedUnlink(macCopy);
+    await _unlink(macCopy);
   }
 
   // --- Reconciliation --------------------------------------------------------

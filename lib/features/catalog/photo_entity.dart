@@ -60,6 +60,27 @@ class PhotoEntity {
   /// True when the photograph was shot with the camera turned.
   bool get isPortrait => ExifOrientation.swapsAxes(orientation);
 
+  /// The file [stream]'s byte offsets are measured into.
+  ///
+  /// Not "the RAW if there is one". When a DNG's header cannot be parsed the
+  /// scan keeps the sibling JPEG's header, offsets and all, so a reader that
+  /// assumed the RAW would seek into unrelated bytes and decode rubbish. The
+  /// stream records which file it came from, and that is the only thing worth
+  /// believing. One method rather than one per reader: the thumbnail path and
+  /// the export path got this right and wrong respectively, which is what
+  /// happens when the same rule is written twice.
+  PhotoFile? fileForStream(PreviewStream stream) {
+    if (files.isEmpty) return null;
+    final wanted = stream.kind == PreviewStreamKind.exifThumbnail ||
+            stream.kind == PreviewStreamKind.wholeFile
+        ? PhotoFileKind.jpeg
+        : PhotoFileKind.raw;
+    for (final file in files) {
+      if (file.kind == wanted) return file;
+    }
+    return files.first;
+  }
+
   /// Aspect ratio the grid should reserve for this photograph, upright, or null
   /// when no preview declared its dimensions.
   ///

@@ -310,5 +310,48 @@ void main() {
         );
       }
     });
+
+    /// Which way the picture turns, which no other test here could see.
+    ///
+    /// Every assertion above holds just as well for a rotation the wrong way
+    /// round: the crop still shrinks, still keeps its ratio, still has no black
+    /// corner. So an export that straightened *against* the preview — leaving a
+    /// photograph twice as crooked as the one the user started with — passed
+    /// the whole suite.
+    ///
+    /// The fixture's green channel rises with y, so on a frame turned clockwise
+    /// — the direction `Transform.rotate` turns the preview for a positive
+    /// angle — green falls from left to right along any row.
+    for (final (angle, description) in [
+      (10.0, 'clockwise'),
+      (-10.0, 'anticlockwise'),
+    ]) {
+      test('a $description straightening turns the picture $description',
+          () async {
+        final subject = await photo();
+
+        final outcome = await service.export(
+          photo: subject,
+          crop: CropRect.largestIn(
+            frameAspect: 640 / 427,
+            ratio: CropRatio.threeTwo,
+            angleDegrees: angle,
+          ),
+          folder: exports,
+        ) as ExportWritten;
+
+        final decoded = img.decodeJpg(File(outcome.path).readAsBytesSync())!;
+        final row = decoded.height ~/ 2;
+        final left = decoded.getPixel(decoded.width ~/ 4, row).g;
+        final right = decoded.getPixel(3 * decoded.width ~/ 4, row).g;
+
+        expect(
+          left,
+          angle > 0 ? greaterThan(right) : lessThan(right),
+          reason: 'a $angle° straightening turned the frame the other way, so '
+              'the export disagrees with what the crop screen showed',
+        );
+      });
+    }
   });
 }

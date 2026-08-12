@@ -235,6 +235,41 @@ void main() {
     });
   });
 
+  group('the Spotlight marker', () {
+    // The one file this app writes to a card that is not a deletion. It only
+    // happens when the user turns the switch on in Réglages, and the switch
+    // says so — but it is still a write to a photographer's card, so it is
+    // worth knowing exactly what it does and what it leaves behind.
+    test('is written where macOS looks for it, and nowhere else', () async {
+      expect(await SpotlightPolicy.optIn(card.path), isTrue);
+
+      expect(
+        File(p.join(card.path, SpotlightPolicy.markerName)).existsSync(),
+        isTrue,
+      );
+      // The photographs are untouched, and no camera folder gained a file.
+      expect(namesUnderCamera(), {'L1000001.DNG', 'L1000001.JPG'});
+    });
+
+    test('is not then reported as debris by our own scan', () async {
+      await SpotlightPolicy.optIn(card.path);
+
+      final report = await guard.scan(card.path);
+
+      // It would be absurd to write a file and then offer to remove it as
+      // rubbish on the next open — and worse, to remove it silently.
+      expect(report.isClean, isTrue);
+      expect(
+        report.found.map((f) => f.relativePath),
+        isNot(contains(SpotlightPolicy.markerName)),
+      );
+    });
+
+    test('says so rather than throwing when the card refuses the write', () async {
+      expect(await SpotlightPolicy.optIn('/Volumes/NotAThing'), isFalse);
+    });
+  });
+
   group('asking whether the card can be written to', () {
     test('says yes for an ordinary card, and leaves nothing behind', () async {
       expect(await cardAcceptsWrites(card.path), isTrue);

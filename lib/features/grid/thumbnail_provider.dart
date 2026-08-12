@@ -218,16 +218,8 @@ class ThumbnailService {
   /// A DNG's previews live in the DNG; a plain JPEG's live in the JPEG. Both
   /// files of a RAW+JPG pair carry a preview, and the offsets recorded by the
   /// scan are the RAW's, so the RAW is the file to open when there is one.
-  PhotoFile? _fileFor(PhotoEntity photo, PreviewStream source) {
-    final kind = source.kind == PreviewStreamKind.exifThumbnail ||
-            source.kind == PreviewStreamKind.wholeFile
-        ? PhotoFileKind.jpeg
-        : PhotoFileKind.raw;
-    for (final file in photo.files) {
-      if (file.kind == kind) return file;
-    }
-    return photo.files.isEmpty ? null : photo.files.first;
-  }
+  PhotoFile? _fileFor(PhotoEntity photo, PreviewStream source) =>
+      photo.fileForStream(source);
 
   /// Withdraws [photo]'s request. Called when a cell scrolls out of view.
   ///

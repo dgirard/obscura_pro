@@ -70,7 +70,13 @@ class CropRectNotifier extends Notifier<CropRect?> {
     );
   }
 
-  void moveTo(Offset topLeft) {
+  /// Slides the rectangle without changing anything else about it.
+  ///
+  /// [frameAspect] is not optional and the angle is carried across: rebuilding
+  /// a [CropRect] and leaving `angleDegrees` to its default silently threw away
+  /// a straightening the user had just made, and clamping without the frame's
+  /// aspect let the crop drift into the empty corners a turn leaves behind.
+  void moveTo(Offset topLeft, double frameAspect) {
     final current = state;
     if (current == null) return;
     state = CropRect(
@@ -82,7 +88,8 @@ class CropRectNotifier extends Notifier<CropRect?> {
       ),
       ratio: current.ratio,
       orientation: current.orientation,
-    ).clampedToFrame();
+      angleDegrees: current.angleDegrees,
+    ).clampedToFrame(frameAspect: frameAspect);
   }
 }
 
@@ -128,8 +135,18 @@ class _CropScreenState extends ConsumerState<CropScreen> {
     return widget.photo.isPortrait ? height / width : width / height;
   }
 
-  ViewTransform get _transform => ViewTransform(
-        imageSize: Size(_frameAspect * 1000, 1000),
+  /// The mapping between screen and crop coordinates, for a given angle.
+  ///
+  /// Built on the *straightened* canvas, because that is the space
+  /// [CropRect.rect] is documented to live in. Building it on the unrotated
+  /// frame instead — which is what this used to do — left the overlay, the
+  /// corner hit-testing and the export each working in a slightly different
+  /// space the moment the horizon was pulled off zero.
+  ViewTransform _transformFor(double angleDegrees) => ViewTransform(
+        imageSize: Size(
+          CropRect.straightenedAspect(_frameAspect, angleDegrees) * 1000,
+          1000,
+        ),
         viewport: _viewport,
       );
 
@@ -150,12 +167,28 @@ class _CropScreenState extends ConsumerState<CropScreen> {
       _failure = null;
     });
 
-    final folder = await ref.read(exportFolderProvider.future);
-    final outcome = await const ExportService().export(
-      photo: widget.photo,
-      crop: crop,
-      folder: folder,
-    );
+    // Everything from here is guarded. `export` reports the failures it can
+    // name, but the folder lookup and the decoder can both throw something it
+    // does not, and an escaping exception used to leave `_busy` true for ever:
+    // the button stayed disabled with no message, and the only way out was to
+    // leave crop mode.
+    final ExportOutcome outcome;
+    try {
+      final folder = await ref.read(exportFolderProvider.future);
+      outcome = await const ExportService().export(
+        photo: widget.photo,
+        crop: crop,
+        folder: folder,
+      );
+    } on Object catch (error) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _failure = 'export impossible : $error';
+        });
+      }
+      return;
+    }
     if (!mounted) return;
 
     setState(() {
@@ -179,10 +212,11 @@ class _CropScreenState extends ConsumerState<CropScreen> {
     final crop = ref.read(cropRectProvider);
     if (crop == null) return;
     const slop = ObscuraStrokes.handleHitSize * 2.5;
+    final transform = _transformFor(crop.angleDegrees);
 
     _grabbed = null;
     for (final corner in CropCorner.values) {
-      final at = _transform.normalizedToScreen(corner.of(crop.rect));
+      final at = transform.normalizedToScreen(corner.of(crop.rect));
       if ((at - details.localPosition).distance <= slop) {
         _grabbed = corner;
         break;
@@ -194,14 +228,15 @@ class _CropScreenState extends ConsumerState<CropScreen> {
   void _drag(DragUpdateDetails details) {
     final crop = ref.read(cropRectProvider);
     if (crop == null) return;
-    final rect = _transform.fittedRect;
+    final transform = _transformFor(crop.angleDegrees);
+    final rect = transform.fittedRect;
     if (rect.width <= 0 || rect.height <= 0) return;
 
     final corner = _grabbed;
     if (corner != null) {
       ref.read(cropRectProvider.notifier).resize(
             corner,
-            _transform.screenToNormalized(details.localPosition),
+            transform.screenToNormalized(details.localPosition),
             _frameAspect,
           );
       return;
@@ -212,6 +247,7 @@ class _CropScreenState extends ConsumerState<CropScreen> {
             crop.rect.left + details.delta.dx / rect.width,
             crop.rect.top + details.delta.dy / rect.height,
           ),
+          _frameAspect,
         );
   }
 
@@ -266,12 +302,15 @@ class _CropScreenState extends ConsumerState<CropScreen> {
                             photo: widget.photo,
                             obscura: obscura,
                             angleDegrees: crop?.angleDegrees ?? 0,
+                            frameAspect: _frameAspect,
+                            fitted: _transformFor(crop?.angleDegrees ?? 0)
+                                .fittedRect,
                           ),
                           if (crop != null)
                             CustomPaint(
                               painter: _CropOverlayPainter(
                                 crop: crop,
-                                transform: _transform,
+                                transform: _transformFor(crop.angleDegrees),
                                 grabbed: _grabbed,
                               ),
                             ),
@@ -298,16 +337,26 @@ class _CropScreenState extends ConsumerState<CropScreen> {
   }
 }
 
+/// The photograph, turned, laid out so its turned bounding box is [fitted].
+///
+/// [fitted] comes from the same [ViewTransform] the overlay and the hit-testing
+/// use, which is the point: the picture, the rectangle drawn over it and the
+/// pixels the export will cut all have to agree about where the frame is once
+/// the horizon has been pulled off zero.
 class _Frame extends ConsumerWidget {
   const _Frame({
     required this.photo,
     required this.obscura,
     required this.angleDegrees,
+    required this.frameAspect,
+    required this.fitted,
   });
 
   final PhotoEntity photo;
   final bool obscura;
   final double angleDegrees;
+  final double frameAspect;
+  final Rect fitted;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -317,18 +366,44 @@ class _Frame extends ConsumerWidget {
       fullPreviewProvider((photo: photo, targetWidth: 1600)),
     );
 
+    // Turning a rectangle grows its bounding box, so the picture has to be
+    // drawn smaller than the box it ends up occupying. Solving
+    // `w·|cos| + h·|sin| = fitted.width` for the unrotated width is what keeps
+    // the turned frame exactly inside the canvas the crop is measured against.
+    final radians = angleDegrees * math.pi / 180;
+    final spread =
+        frameAspect * math.cos(radians).abs() + math.sin(radians).abs();
+    // The unrotated height; the width is that times the frame's own aspect.
+    final unit = spread <= 0 ? fitted.height : fitted.width / spread;
+
     return image.when(
       // The turn is a canvas transform on the screen and a real rotation only
       // at export. Rotating pixels to preview a one-degree correction would
       // cost a full re-encode per drag of the slider.
-      data: (decoded) => Transform.rotate(
-        angle: angleDegrees * math.pi / 180,
-        child: OrientedImage(
-          key: const Key('crop-image'),
-          image: decoded,
-          orientation:
-              DisplayOrientation.of(photo.orientation, obscura: obscura),
-        ),
+      data: (decoded) => Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned.fromRect(
+            rect: fitted,
+            child: Center(
+              child: Transform.rotate(
+                angle: radians,
+                child: SizedBox(
+                  width: unit * frameAspect,
+                  height: unit,
+                  child: OrientedImage(
+                    key: const Key('crop-image'),
+                    image: decoded,
+                    orientation: DisplayOrientation.of(
+                      photo.orientation,
+                      obscura: obscura,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       error: (_, _) => const SizedBox.expand(),
       loading: () => const SizedBox.expand(),

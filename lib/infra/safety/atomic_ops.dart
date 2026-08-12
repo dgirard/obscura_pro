@@ -84,7 +84,8 @@ Future<UnlinkOutcome> verifiedUnlink(File file) async {
     if (stat.type == FileSystemEntityType.notFound) return const AlreadyAbsent();
     size = stat.size;
   } on FileSystemException catch (error) {
-    return _volumeGoneOr(file.path, error, (r) => UnlinkFailed(r));
+    return _volumeGoneOr(file.path, error,
+        onVolumeGone: VolumeGone.new, otherwise: UnlinkFailed.new);
   }
 
   try {
@@ -92,7 +93,8 @@ Future<UnlinkOutcome> verifiedUnlink(File file) async {
   } on PathNotFoundException {
     return const AlreadyAbsent();
   } on FileSystemException catch (error) {
-    return _volumeGoneOr(file.path, error, (r) => UnlinkFailed(r));
+    return _volumeGoneOr(file.path, error,
+        onVolumeGone: VolumeGone.new, otherwise: UnlinkFailed.new);
   }
 
   try {
@@ -100,7 +102,8 @@ Future<UnlinkOutcome> verifiedUnlink(File file) async {
       return UnlinkFailed('${file.path} still exists after delete');
     }
   } on FileSystemException catch (error) {
-    return _volumeGoneOr(file.path, error, (r) => UnlinkFailed(r));
+    return _volumeGoneOr(file.path, error,
+        onVolumeGone: VolumeGone.new, otherwise: UnlinkFailed.new);
   }
 
   return Unlinked(size);
@@ -136,6 +139,18 @@ final class CopySourceMissing extends CopyOutcome {
   final String path;
 }
 
+/// The volume went away mid-copy (CARTE-5).
+///
+/// Its own case rather than borrowing [VolumeGone] from the unlink family.
+/// The two are separate sealed hierarchies, and a value of one is not a value
+/// of the other — making one serve both is what a cast would be for, and a cast
+/// across sealed hierarchies fails at runtime on precisely the path this class
+/// exists to describe.
+final class CopyVolumeGone extends CopyOutcome {
+  const CopyVolumeGone(this.path);
+  final String path;
+}
+
 final class CopyFailed extends CopyOutcome {
   const CopyFailed(this.reason);
   final String reason;
@@ -161,7 +176,8 @@ Future<CopyOutcome> copyVerified({
     sourceHash = await hashOf(source);
     sourceBytes = await source.length();
   } on FileSystemException catch (error) {
-    return _volumeGoneOr(source.path, error, (r) => CopyFailed(r));
+    return _volumeGoneOr(source.path, error,
+        onVolumeGone: CopyVolumeGone.new, otherwise: CopyFailed.new);
   }
 
   // On a card the temp name must be the reserved one, so that debris left by a
@@ -203,7 +219,8 @@ Future<CopyOutcome> copyVerified({
       // Nothing more can be done, and reporting the original failure matters
       // more than reporting the failure to clean up after it.
     }
-    return _volumeGoneOr(source.path, error, (r) => CopyFailed(r));
+    return _volumeGoneOr(source.path, error,
+        onVolumeGone: CopyVolumeGone.new, otherwise: CopyFailed.new);
   }
 }
 
@@ -272,7 +289,8 @@ Future<CopyOutcome> writeVerified({
     } on FileSystemException {
       // See copyVerified.
     }
-    return _volumeGoneOr(destination.path, error, (r) => CopyFailed(r));
+    return _volumeGoneOr(destination.path, error,
+        onVolumeGone: CopyVolumeGone.new, otherwise: CopyFailed.new);
   }
 }
 
@@ -281,18 +299,26 @@ Future<CopyOutcome> writeVerified({
 /// The two need different answers: a vanished volume stops the whole run and
 /// leaves entities uncertain, because nothing can be observed about a card that
 /// is gone, while a single failed operation is just that.
+/// Each caller supplies the constructor for its own hierarchy.
+///
+/// [onVolumeGone] is a parameter rather than a value this function builds
+/// itself because the unlink and copy families are separate sealed types. A
+/// single shared value cast to whichever the caller wanted compiles cleanly and
+/// then throws at runtime — on the vanished-card path, which is the one moment
+/// this whole file exists to survive.
 T _volumeGoneOr<T>(
   String path,
-  FileSystemException error,
-  T Function(String reason) otherwise,
-) {
+  FileSystemException error, {
+  required T Function(String path) onVolumeGone,
+  required T Function(String reason) otherwise,
+}) {
   final code = error.osError?.errorCode;
   // ENOENT on a path whose volume root has gone, ENODEV, and EIO are what a
   // pulled card produces; the volume check is what tells them apart from a
   // missing file on a card that is still mounted.
   const vanished = {5, 6, 19, 65, 66};
   if (vanished.contains(code) || !_volumeStillMounted(path)) {
-    return VolumeGone(path) as T;
+    return onVolumeGone(path);
   }
   return otherwise('${error.message}${code == null ? '' : ' (errno $code)'}');
 }
