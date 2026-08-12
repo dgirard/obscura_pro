@@ -170,6 +170,22 @@ user's selection in the panel *is* the grant, and there is no way to reach a
 volume they have not pointed at. Seeing a card in the list and being allowed to
 read it are different things, and no amount of interface removes the difference.
 
+### The exports list is told when to look again — 2026-08-12
+Asked for: a refresh button on the exports screen. It is there, beside the
+title, and it re-reads the folder — which is the case it exists for, because the
+folder can change without this app touching it: a file dragged into a job
+folder, an export deleted from the Finder.
+
+The list also refreshes itself where the app is the one that changed the folder:
+after a crop is exported, and after each file of a batch. That is the honest
+division — the app knows about its own writes and says so; for everything else
+there is the button.
+
+An automatic re-read on arriving at the screen was tried and taken back out. It
+fired while the first read was still in flight and left the provider loading for
+ever, which is a worse failure than a stale list: the screen showed a spinner
+and nothing else, and no button could get it out of that.
+
 ### The frames you want, marked in the same pass — 2026-08-12
 Asked for: marking the photographs to export. Culling makes two decisions about
 every frame — this one is going, that one is wanted — and the app only recorded

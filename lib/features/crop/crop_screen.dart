@@ -294,6 +294,10 @@ class _CropScreenState extends ConsumerState<CropScreen> {
               crop: crop,
               written: written,
             );
+        // The list is read from the folder and the rows; it has just gained
+        // one of each, and a screen the user walks to next must not be showing
+        // what was there before they pressed the button.
+        ref.invalidate(exportsProvider);
       } on Object catch (error) {
         if (mounted) {
           setState(() => _failure =

@@ -271,6 +271,22 @@ class InMemoryExportStore implements ExportStore {
     required ExportWritten written,
   }) async {
     recorded.add(written.path);
+    // Listed afterwards, like the real one: a store where recording and listing
+    // are unrelated would let a caller pass a test it should fail.
+    records.insert(
+      0,
+      ExportRecord(
+        id: records.length + 1,
+        radical: photo.dcfPath,
+        ratio: crop.ratio.label,
+        orientation: crop.orientation.name,
+        path: written.path,
+        createdAt: DateTime(2026, 8, 12),
+        pixelWidth: written.pixelWidth,
+        pixelHeight: written.pixelHeight,
+        byteSize: written.bytes,
+      ),
+    );
   }
 
   @override

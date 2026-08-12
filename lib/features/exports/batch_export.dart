@@ -127,6 +127,9 @@ class BatchExporter extends Notifier<BatchProgress> {
           // Off the queue only once it has actually been written: stopped
           // halfway, what is still marked is what is still to do.
           await ref.read(exportMarksProvider.notifier).clear(photo);
+          // The file exists now, so the list beneath this panel is out of date
+          // by exactly one row.
+          ref.invalidate(exportsProvider);
           done++;
         case ExportFailed(:final reason):
           failures.add('${photo.radical} : $reason');

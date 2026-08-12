@@ -91,6 +91,23 @@ void main() {
     await tester.pump();
   }
 
+  testWidgets('reads the folder again on demand', (tester) async {
+    await pump(tester, [record(id: 1, path: file('2026-08-12', 'a.jpg'))]);
+    expect(find.byKey(const Key('export-1')), findsOneWidget);
+
+    // A file dragged out in the Finder, or one dropped in: the folder can
+    // change without this app, and this is how a photographer says "look
+    // again" without leaving the screen and coming back.
+    store.records.clear();
+    await tester.tap(find.byKey(const Key('exports-refresh')));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const Key('export-1')), findsNothing);
+    expect(find.byKey(const Key('exports-empty')), findsOneWidget);
+  });
+
   testWidgets('offers no queue until something is marked', (tester) async {
     await pump(tester, []);
 

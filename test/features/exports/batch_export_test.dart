@@ -106,13 +106,23 @@ void main() {
     expect(container.read(exportMarksProvider).length, 1);
   });
 
-  test('records each file it wrote', () async {
+  test('records each file it wrote, and says the list has changed', () async {
     final photos = [_photo('L1000001')];
     await markAll(photos);
+    // Listened to so the invalidation has somewhere to land; without a
+    // listener the provider is simply recomputed on next read and the test
+    // would be proving nothing either way.
+    container.listen(exportsProvider, (_, _) {});
+    await pumpEventQueue();
 
     await container.read(batchExporterProvider.notifier).run(photos);
+    await pumpEventQueue();
 
     expect(store.recorded, hasLength(1));
+    // The list under the panel is out of date by exactly one row the moment
+    // the file lands, and it is told so rather than waiting for the user to
+    // find the refresh button.
+    expect(container.read(exportsProvider).value, hasLength(1));
   });
 
   test('a frame from another card waits for it', () async {

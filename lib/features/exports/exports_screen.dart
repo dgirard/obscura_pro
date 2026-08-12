@@ -139,7 +139,11 @@ class _ExportsScreenState extends ConsumerState<ExportsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _Header(count: exports.value?.length ?? 0),
+        _Header(
+          count: exports.value?.length ?? 0,
+          reloading: exports.isLoading,
+          onRefresh: () => ref.invalidate(exportsProvider),
+        ),
         const _Queue(),
         if (_failure != null)
           Padding(
@@ -155,6 +159,10 @@ class _ExportsScreenState extends ConsumerState<ExportsScreen> {
           ),
         Expanded(
           child: exports.when(
+            // The list already on screen stays there while it is read again;
+            // blanking it to a spinner would make a refresh look like a folder
+            // that had emptied itself.
+            skipLoadingOnRefresh: true,
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (error, _) => Center(
               child: Text(
@@ -386,9 +394,15 @@ class _Queue extends ConsumerWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.count});
+  const _Header({
+    required this.count,
+    required this.reloading,
+    required this.onRefresh,
+  });
 
   final int count;
+  final bool reloading;
+  final VoidCallback onRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -399,18 +413,50 @@ class _Header extends StatelessWidget {
         ObscuraSpacing.overlayPadding,
         0,
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Exports', style: ObscuraTypography.headlineLarge),
-          Text(
-            count == 0
-                ? 'Les recadrages exportés sur le Mac.'
-                : '$count fichier${count > 1 ? 's' : ''} · sur le Mac, '
-                    'jamais sur la carte.',
-            style: ObscuraTypography.bodySmall
-                .copyWith(color: ObscuraColors.textSecondary),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Exports', style: ObscuraTypography.headlineLarge),
+                Text(
+                  count == 0
+                      ? 'Les recadrages exportés sur le Mac.'
+                      : '$count fichier${count > 1 ? 's' : ''} · sur le Mac, '
+                          'jamais sur la carte.',
+                  style: ObscuraTypography.bodySmall
+                      .copyWith(color: ObscuraColors.textSecondary),
+                ),
+              ],
+            ),
           ),
+          // The folder can change without this app: a file dragged into a job
+          // folder, an export deleted in the Finder. This is how a photographer
+          // says "look again" without leaving the screen and coming back.
+          if (reloading)
+            const Padding(
+              padding: EdgeInsets.all(ObscuraSpacing.controlGap),
+              child: SizedBox(
+                key: Key('exports-reloading'),
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: ObscuraColors.statusExport,
+                ),
+              ),
+            )
+          else
+            IconButton(
+              key: const Key('exports-refresh'),
+              tooltip: 'Relire le dossier',
+              iconSize: 18,
+              color: ObscuraColors.textSecondary,
+              onPressed: onRefresh,
+              icon: const Icon(Icons.refresh),
+            ),
         ],
       ),
     );
