@@ -254,4 +254,118 @@ void main() {
       expect(inside.clampedToFrame(), inside);
     });
   });
+
+  group('resizing the crop', () {
+    // A 3:2 photograph, so normalized space is stretched by 1.5.
+    const frame = 3 / 2;
+
+    CropRect square() =>
+        CropRect.largestIn(frameAspect: frame, ratio: CropRatio.square);
+
+    /// The shape as it looks on screen, which is the only one the user cares
+    /// about — the stored rectangle is stretched and says nothing directly.
+    double visualAspect(CropRect c) => c.rect.width * frame / c.rect.height;
+
+    test('dragging a corner keeps the chosen ratio exactly', () {
+      final start = square();
+
+      final smaller = start.resizedFrom(
+        corner: CropCorner.topLeft,
+        // Deliberately off the ratio: the pointer proposes, the ratio decides.
+        pointer: const Offset(0.45, 0.1),
+        frameAspect: frame,
+      );
+
+      expect(visualAspect(smaller), closeTo(1, 1e-9));
+      expect(smaller.rect.width, lessThan(start.rect.width));
+    });
+
+    test('the opposite corner does not move', () {
+      final start = square();
+      final anchor = start.rect.bottomRight;
+
+      final resized = start.resizedFrom(
+        corner: CropCorner.topLeft,
+        pointer: const Offset(0.4, 0.3),
+        frameAspect: frame,
+      );
+
+      // What makes a resize feel like pulling on a frame rather than sliding
+      // one somewhere else.
+      expect(resized.rect.right, closeTo(anchor.dx, 1e-9));
+      expect(resized.rect.bottom, closeTo(anchor.dy, 1e-9));
+    });
+
+    test('every ratio survives a resize', () {
+      for (final ratio in CropRatio.values) {
+        final start = CropRect.largestIn(frameAspect: frame, ratio: ratio);
+        final resized = start.resizedFrom(
+          corner: CropCorner.bottomRight,
+          pointer: const Offset(0.7, 0.9),
+          frameAspect: frame,
+        );
+
+        expect(
+          visualAspect(resized),
+          closeTo(ratio.aspectIn(CropOrientation.landscape), 1e-6),
+          reason: ratio.label,
+        );
+      }
+    });
+
+    test('a resize cannot leave the photograph', () {
+      final start = square();
+
+      final overshot = start.resizedFrom(
+        corner: CropCorner.bottomRight,
+        // Far outside the frame, as a fast drag routinely goes.
+        pointer: const Offset(4, 4),
+        frameAspect: frame,
+      );
+
+      expect(overshot.rect.left, greaterThanOrEqualTo(-1e-9));
+      expect(overshot.rect.top, greaterThanOrEqualTo(-1e-9));
+      expect(overshot.rect.right, lessThanOrEqualTo(1 + 1e-9));
+      expect(overshot.rect.bottom, lessThanOrEqualTo(1 + 1e-9));
+      expect(visualAspect(overshot), closeTo(1, 1e-6));
+    });
+
+    test('a crop dragged to nothing stops at a usable size', () {
+      final start = square();
+
+      final tiny = start.resizedFrom(
+        corner: CropCorner.topLeft,
+        pointer: start.rect.bottomRight,
+        frameAspect: frame,
+      );
+
+      // A rectangle of zero is an encoder error rather than a photograph, and a
+      // user who overshoots should find a small crop, not a broken one.
+      expect(tiny.rect.width, greaterThanOrEqualTo(CropRect.minExtent - 1e-9));
+      expect(tiny.rect.height, greaterThanOrEqualTo(CropRect.minExtent - 1e-9));
+      expect(visualAspect(tiny), closeTo(1, 1e-6));
+    });
+
+    test('resizing then exporting yields more than a token of pixels', () {
+      final resized = square().resizedFrom(
+        corner: CropCorner.topLeft,
+        pointer: const Offset(0.4, 0.2),
+        frameAspect: frame,
+      );
+
+      // The point of resizing at all: a tighter crop of the 60 Mpx preview is
+      // still a large photograph.
+      final pixels = resized.toPixels(const Size(9520, 6336));
+      expect(pixels.width, greaterThan(2000));
+    });
+
+    test('a corner knows which one anchors it', () {
+      expect(CropCorner.topLeft.opposite, CropCorner.bottomRight);
+      expect(CropCorner.bottomLeft.opposite, CropCorner.topRight);
+      expect(
+        CropCorner.topRight.of(const Rect.fromLTWH(0.1, 0.2, 0.4, 0.4)),
+        const Offset(0.5, 0.2),
+      );
+    });
+  });
 }

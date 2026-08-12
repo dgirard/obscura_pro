@@ -52,6 +52,16 @@ class CropRectNotifier extends Notifier<CropRect?> {
     if (current != null) state = current.turned(frameAspect: frameAspect);
   }
 
+  void resize(CropCorner corner, Offset pointer, double frameAspect) {
+    final current = state;
+    if (current == null) return;
+    state = current.resizedFrom(
+      corner: corner,
+      pointer: pointer,
+      frameAspect: frameAspect,
+    );
+  }
+
   void moveTo(Offset topLeft) {
     final current = state;
     if (current == null) return;
@@ -95,6 +105,9 @@ class _CropScreenState extends ConsumerState<CropScreen> {
   String? _lastExport;
   String? _failure;
   bool _busy = false;
+
+  /// The corner being dragged, or null while the whole rectangle is moving.
+  CropCorner? _grabbed;
 
   double get _frameAspect {
     final stream = widget.photo.viewerPreview ?? widget.photo.gridPreview;
@@ -146,11 +159,43 @@ class _CropScreenState extends ConsumerState<CropScreen> {
     });
   }
 
+  /// Whether the pointer went down on a corner, and which.
+  ///
+  /// The hit area is larger than the drawn handle, per the design system: a
+  /// crop is adjusted by feel, and demanding precise pointing to start a
+  /// precise adjustment is the wrong way round.
+  void _grab(DragStartDetails details) {
+    final crop = ref.read(cropRectProvider);
+    if (crop == null) return;
+    const slop = ObscuraStrokes.handleHitSize * 2.5;
+
+    _grabbed = null;
+    for (final corner in CropCorner.values) {
+      final at = _transform.normalizedToScreen(corner.of(crop.rect));
+      if ((at - details.localPosition).distance <= slop) {
+        _grabbed = corner;
+        break;
+      }
+    }
+    setState(() {});
+  }
+
   void _drag(DragUpdateDetails details) {
     final crop = ref.read(cropRectProvider);
     if (crop == null) return;
     final rect = _transform.fittedRect;
     if (rect.width <= 0 || rect.height <= 0) return;
+
+    final corner = _grabbed;
+    if (corner != null) {
+      ref.read(cropRectProvider.notifier).resize(
+            corner,
+            _transform.screenToNormalized(details.localPosition),
+            _frameAspect,
+          );
+      return;
+    }
+
     ref.read(cropRectProvider.notifier).moveTo(
           Offset(
             crop.rect.left + details.delta.dx / rect.width,
@@ -158,6 +203,8 @@ class _CropScreenState extends ConsumerState<CropScreen> {
           ),
         );
   }
+
+  void _release(DragEndDetails details) => setState(() => _grabbed = null);
 
   @override
   Widget build(BuildContext context) {
@@ -198,7 +245,9 @@ class _CropScreenState extends ConsumerState<CropScreen> {
                   builder: (context, constraints) {
                     _viewport = constraints.biggest;
                     return GestureDetector(
+                      onPanStart: _grab,
                       onPanUpdate: _drag,
+                      onPanEnd: _release,
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
@@ -208,6 +257,7 @@ class _CropScreenState extends ConsumerState<CropScreen> {
                               painter: _CropOverlayPainter(
                                 crop: crop,
                                 transform: _transform,
+                                grabbed: _grabbed,
                               ),
                             ),
                         ],
@@ -265,10 +315,15 @@ class _Frame extends ConsumerWidget {
 /// to leave out as much as what to keep, and hiding the rest would take away
 /// the very comparison they are making.
 class _CropOverlayPainter extends CustomPainter {
-  const _CropOverlayPainter({required this.crop, required this.transform});
+  const _CropOverlayPainter({
+    required this.crop,
+    required this.transform,
+    this.grabbed,
+  });
 
   final CropRect crop;
   final ViewTransform transform;
+  final CropCorner? grabbed;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -302,11 +357,26 @@ class _CropOverlayPainter extends CustomPainter {
       canvas.drawLine(Offset(x, rect.top), Offset(x, rect.bottom), thirds);
       canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), thirds);
     }
+
+    // Corner handles. Drawn small and grabbed large: the hit area in [_grab] is
+    // several times this, because a crop is adjusted by feel.
+    for (final corner in CropCorner.values) {
+      final at = corner.of(rect);
+      canvas.drawRect(
+        Rect.fromCenter(center: at, width: 12, height: 12),
+        Paint()
+          ..color = corner == grabbed
+              ? ObscuraColors.leicaRed
+              : ObscuraColors.textPrimary,
+      );
+    }
   }
 
   @override
   bool shouldRepaint(_CropOverlayPainter old) =>
-      old.crop != crop || old.transform.viewport != transform.viewport;
+      old.crop != crop ||
+      old.grabbed != grabbed ||
+      old.transform.viewport != transform.viewport;
 }
 
 /// The ratio selector, built to feel like a switch on a camera body.
@@ -361,6 +431,15 @@ class _Controls extends ConsumerWidget {
             color: ObscuraColors.textSecondary,
           ),
           const Spacer(),
+          if (crop != null)
+            Padding(
+              padding: const EdgeInsets.only(right: ObscuraSpacing.overlayPadding),
+              child: Text(
+                'Glissez le cadre, tirez un coin pour resserrer',
+                style: ObscuraTypography.bodySmall
+                    .copyWith(color: ObscuraColors.textSecondary),
+              ),
+            ),
           if (failure != null)
             Padding(
               padding: const EdgeInsets.only(right: ObscuraSpacing.overlayPadding),

@@ -58,6 +58,29 @@ enum CropRatio {
 
 enum CropOrientation { landscape, portrait }
 
+/// A corner of the crop, the thing a pointer grabs to resize it.
+enum CropCorner {
+  topLeft,
+  topRight,
+  bottomLeft,
+  bottomRight;
+
+  /// The corner that stays put while this one is dragged.
+  CropCorner get opposite => switch (this) {
+        CropCorner.topLeft => CropCorner.bottomRight,
+        CropCorner.topRight => CropCorner.bottomLeft,
+        CropCorner.bottomLeft => CropCorner.topRight,
+        CropCorner.bottomRight => CropCorner.topLeft,
+      };
+
+  Offset of(Rect rect) => switch (this) {
+        CropCorner.topLeft => rect.topLeft,
+        CropCorner.topRight => rect.topRight,
+        CropCorner.bottomLeft => rect.bottomLeft,
+        CropCorner.bottomRight => rect.bottomRight,
+      };
+}
+
 /// A crop, stored the only way that survives (KTD-12).
 ///
 /// In normalized coordinates over the upright photograph — `(0,0)` top-left,
@@ -161,6 +184,79 @@ final class CropRect {
       ratio: ratio,
       orientation: orientation,
     );
+  }
+
+  /// The smallest a crop may become, as a fraction of the frame.
+  ///
+  /// Not zero: a rectangle dragged to nothing is an encoder error rather than a
+  /// photograph, and a user who overshoots should find a small crop, not a
+  /// broken one.
+  static const double minExtent = 0.05;
+
+  /// This crop's shape expressed in normalized space.
+  ///
+  /// Normalized space is stretched by the frame's own aspect, so the ratio a
+  /// photographer chose is *not* the ratio of the stored rectangle. Every
+  /// resize has to go through this or it silently produces a shape nobody asked
+  /// for.
+  double normalizedAspect(double frameAspect) =>
+      frameAspect <= 0 ? 1 : ratio.aspectIn(orientation) / frameAspect;
+
+  /// The crop after [corner] has been dragged to [pointer].
+  ///
+  /// The opposite corner is the anchor and does not move, which is what makes a
+  /// resize feel like pulling on a frame rather than sliding one. The chosen
+  /// ratio is preserved throughout: the pointer proposes a size and the ratio
+  /// decides it, so there is no drag that can produce a shape off the list.
+  CropRect resizedFrom({
+    required CropCorner corner,
+    required Offset pointer,
+    required double frameAspect,
+  }) {
+    final anchor = corner.opposite.of(rect);
+    final aspect = normalizedAspect(frameAspect);
+
+    // The pointer rarely lands on the ratio exactly, so the larger of the two
+    // dimensions it implies wins and the other follows. Taking the smaller
+    // instead would make the crop shrink away from a pointer moving outward.
+    final proposedWidth = (pointer.dx - anchor.dx).abs();
+    final proposedHeight = (pointer.dy - anchor.dy).abs();
+    // Both dimensions must clear the floor, and height follows width, so the
+    // floor on width is whichever of the two constraints binds.
+    final floorWidth = math.max(minExtent, minExtent * aspect);
+    var width = math.max(
+      math.max(proposedWidth, proposedHeight * aspect),
+      floorWidth,
+    );
+    var height = width / aspect;
+
+    // Room between the anchor and the frame edge the drag is heading for.
+    final towardsLeft = pointer.dx < anchor.dx;
+    final towardsTop = pointer.dy < anchor.dy;
+    final roomX = towardsLeft ? anchor.dx : 1 - anchor.dx;
+    final roomY = towardsTop ? anchor.dy : 1 - anchor.dy;
+    final scale = math.min(
+      roomX <= 0 ? 0.0 : math.min(1.0, roomX / width),
+      roomY <= 0 ? 0.0 : math.min(1.0, roomY / height),
+    );
+    width *= scale;
+    height *= scale;
+
+    // The floor again, by assignment rather than by scaling: a pointer landing
+    // exactly on the anchor leaves zero, and no multiplication grows a zero.
+    if (width < floorWidth) {
+      width = floorWidth;
+      height = width / aspect;
+    }
+
+    final left = towardsLeft ? anchor.dx - width : anchor.dx;
+    final top = towardsTop ? anchor.dy - height : anchor.dy;
+
+    return CropRect(
+      rect: Rect.fromLTWH(left, top, width, height),
+      ratio: ratio,
+      orientation: orientation,
+    ).clampedToFrame();
   }
 
   CropRect withRatio(CropRatio next, {required double frameAspect}) =>
