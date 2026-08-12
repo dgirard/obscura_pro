@@ -94,20 +94,24 @@ undecided rather than decided.
 
 ---
 
+## Decided
+
+### Video is ignored — 2026-08-12
+Not catalogued, not shown, not deleted. The settings screen counts the ignored
+files and names the first few, so a card reporting "0 photographs" cannot leave
+anyone thinking it is empty. Silence about a card's contents was the one option
+that was not defensible.
+
+### Settings live in their own screen — 2026-08-12
+Export folder, deletion mode, and the Spotlight tradeoff. Each is stated with
+its cost on both sides rather than presented as a switch with a good side and a
+bad one. Stored as JSON beside the bookmarks, readable in a text editor.
+
+Still unexposed there: nothing, for now. `TrashService`'s immediate mode is
+selectable but the grid does not yet act on the choice — the same wiring gap as
+persistent marking, and it should be closed with it.
+
 ## Undecided, and waiting on you
-
-### What happens to video
-A real card carries `.MP4` files. The scan reports them as
-`unsupportedFiles` and shows nothing. A card reporting "941 photographs" while
-holding gigabytes of video is lying to someone deciding whether to reformat.
-Catalogue them, show them, or state plainly that they are ignored — all three
-are defensible; silence is not.
-
-### Settings
-No unit owns a settings screen, and three things now need one: the export
-folder, the Spotlight-indexing tradeoff (U10 states it and does nothing), and
-the choice between deferred marking and immediate move-to-Mac-trash, which
-`TrashService` implements and nothing exposes.
 
 ### A key for the EXIF overlay
 The spec's keyboard table (section 5) assigns none, so it is a visible control

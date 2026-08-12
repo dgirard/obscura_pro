@@ -59,7 +59,7 @@ final librarySectionProvider =
 /// Cloud Sync all describe a library the app keeps; this one keeps none — the
 /// photographs stay on the card until the user exports or deletes them, and a
 /// menu entry promising otherwise would be the first lie the interface tells.
-enum LibrarySection { library, card, trash }
+enum LibrarySection { library, card, trash, settings }
 
 class _Sidebar extends ConsumerWidget {
   const _Sidebar();
@@ -85,6 +85,7 @@ class _Sidebar extends ConsumerWidget {
             (LibrarySection.library, Icons.photo_library_outlined, 'Bibliothèque'),
             (LibrarySection.card, Icons.sd_card_outlined, 'Carte SD'),
             (LibrarySection.trash, Icons.delete_outline, 'Corbeille'),
+            (LibrarySection.settings, Icons.tune, 'Réglages'),
           ])
             _SectionEntry(
               section: section,

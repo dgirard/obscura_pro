@@ -11,6 +11,7 @@ import '../volume_select/card_selection.dart';
 import '../../app/app_shell.dart';
 import '../../infra/safety/io_errors.dart';
 import '../../infra/safety/parasite_guard.dart';
+import '../settings/settings_screen.dart';
 import '../trash/trash_screen.dart';
 import '../viewer/viewer_screen.dart';
 import 'photo_cell.dart';
@@ -364,8 +365,14 @@ class LibraryScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (ref.watch(librarySectionProvider) == LibrarySection.trash) {
-      return const TrashScreen();
+    switch (ref.watch(librarySectionProvider)) {
+      case LibrarySection.trash:
+        return const TrashScreen();
+      case LibrarySection.settings:
+        return const SettingsScreen();
+      case LibrarySection.library:
+      case LibrarySection.card:
+        break;
     }
     return ref.watch(cardCatalogProvider).when(
           loading: () => const Center(

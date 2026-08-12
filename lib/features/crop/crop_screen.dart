@@ -10,6 +10,7 @@ import '../../infra/geometry/view_transform.dart';
 import '../catalog/photo_entity.dart';
 import '../viewer/obscura.dart';
 import '../viewer/viewer_screen.dart';
+import '../settings/settings_store.dart';
 import 'export_service.dart';
 import 'ratio.dart';
 
@@ -89,7 +90,10 @@ final cropRectProvider =
     NotifierProvider<CropRectNotifier, CropRect?>(CropRectNotifier.new);
 
 /// Where exports go.
-final exportFolderProvider = FutureProvider<Directory>((ref) => defaultExportFolder());
+final exportFolderProvider = FutureProvider<Directory>((ref) async {
+  final chosen = ref.watch(settingsProvider).value?.exportFolder;
+  return chosen == null ? defaultExportFolder() : Directory(chosen);
+});
 
 /// Crop mode over the open photograph.
 ///
