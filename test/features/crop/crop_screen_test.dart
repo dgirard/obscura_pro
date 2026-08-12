@@ -8,6 +8,9 @@ import 'package:obscura_pro/features/catalog/photo_entity.dart';
 import 'package:obscura_pro/features/catalog/stable_key.dart';
 import 'package:obscura_pro/features/crop/crop_screen.dart';
 import 'package:obscura_pro/features/crop/ratio.dart';
+import 'package:obscura_pro/features/layers/layer_controller.dart';
+import 'package:obscura_pro/features/layers/layer_painter.dart';
+import 'package:obscura_pro/features/layers/layer_repository.dart';
 import 'package:obscura_pro/features/viewer/obscura.dart';
 import 'package:obscura_pro/features/viewer/viewer_screen.dart';
 import 'package:obscura_pro/infra/geometry/view_transform.dart';
@@ -59,6 +62,42 @@ void main() {
 
     // The largest square in a 1620 x 1080 frame.
     expect(_text(tester, 'crop-size'), '1080 × 1080 px');
+  });
+
+  testWidgets('shows the guides that are on the photograph', (tester) async {
+    final container = await _pump(tester);
+    container.read(layerBoardProvider.notifier)
+      ..place('golden-spiral')
+      ..place('symmetry');
+    await tester.pump();
+
+    // A frame is cut *against* a composition, so the composition has to be on
+    // screen while it is being cut. Before this, crop mode drew the picture and
+    // nothing else — the guides came back only on leaving it.
+    final painter = tester
+        .widget<CustomPaint>(find.byKey(const Key('crop-layers')))
+        .painter as LayerPainter;
+    expect(painter.layers.map((l) => l.patternCode),
+        ['golden-spiral', 'symmetry']);
+    // Drawn, not manipulable: this screen is for choosing a frame, and a guide
+    // that could be dragged while a crop is being pulled would be two tools
+    // under one pointer.
+    expect(painter.showHandles, isFalse);
+  });
+
+  testWidgets('the guides turn with the picture and flip with obscura',
+      (tester) async {
+    final container = await _pump(tester);
+    container.read(obscuraProvider.notifier).toggle();
+    container.read(layerBoardProvider.notifier).place('golden-spiral');
+    await tester.pump();
+
+    final painter = tester
+        .widget<CustomPaint>(find.byKey(const Key('crop-layers')))
+        .painter as LayerPainter;
+    // The guides sit in the same box as the picture, so obscura reaches them
+    // through the same transform rather than being applied twice or not at all.
+    expect(painter.transform.obscura, isTrue);
   });
 
   testWidgets('the frame follows the pointer, upright', (tester) async {
@@ -173,6 +212,7 @@ Future<ProviderContainer> _pump(WidgetTester tester, {double width = 1200}) asyn
     ProviderScope(
       overrides: [
         fullPreviewProvider.overrideWith((ref, request) => _image()),
+        layerRepositoryProvider.overrideWithValue(InMemoryLayerStore()),
       ],
       child: Consumer(
         builder: (context, ref, _) {

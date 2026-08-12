@@ -170,6 +170,22 @@ user's selection in the panel *is* the grant, and there is no way to reach a
 volume they have not pointed at. Seeing a card in the list and being allowed to
 read it are different things, and no amount of interface removes the difference.
 
+### The composition is visible while the frame is cut — 2026-08-12
+Reported: "lorsque l'on recadre on ne voit que le calque des trois tiers". The
+tracing on screen was not a layer at all — it is a thirds grid drawn inside the
+crop rectangle, about the frame being chosen — and the guides actually placed on
+the photograph were simply not drawn in crop mode. They came back on leaving it.
+
+They are drawn now, inside the same box as the picture, so they turn with it
+when the horizon is corrected and flip with it under obscura. Without handles:
+this screen is for choosing a frame, and a guide that could be dragged while a
+crop is being pulled would be two tools under one pointer.
+
+The crop rectangle keeps its own thirds. The two say different things — one is
+the composition of the photograph, the other is the frame about to be cut out of
+it — and losing the second to avoid explaining the first would take away the
+guide that is actually about the decision being made.
+
 ### One tile, two grids — 2026-08-12
 Asked plainly: "pourquoi ce n'est pas le même viewer de vignettes pour les
 exports et pour la carte SD". No good reason — the exports screen was written as

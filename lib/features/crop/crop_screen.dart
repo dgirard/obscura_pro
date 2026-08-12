@@ -9,6 +9,8 @@ import '../../app/theme.dart';
 import '../../infra/geometry/view_transform.dart';
 import '../catalog/photo_entity.dart';
 import '../exports/export_store.dart';
+import '../layers/layer_controller.dart';
+import '../layers/layer_painter.dart';
 import '../viewer/obscura.dart';
 import '../viewer/viewer_screen.dart';
 import '../settings/settings_store.dart';
@@ -211,7 +213,11 @@ class _CropScreenState extends ConsumerState<CropScreen> {
     super.initState();
     // After the first frame, so the notifier is not written during a build.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) ref.read(cropRectProvider.notifier).reset(_frameAspect);
+      if (!mounted) return;
+      ref.read(cropRectProvider.notifier).reset(_frameAspect);
+      // Ordinarily the viewer has already done this; doing it again costs
+      // nothing and makes the screen work on its own terms.
+      ref.read(layerBoardProvider.notifier).open(widget.photo);
     });
   }
 
@@ -495,13 +501,39 @@ class _Frame extends ConsumerWidget {
                 child: SizedBox(
                   width: unit * frameAspect,
                   height: unit,
-                  child: OrientedImage(
-                    key: const Key('crop-image'),
-                    image: decoded,
-                    orientation: DisplayOrientation.of(
-                      photo.orientation,
-                      obscura: obscura,
-                    ),
+                  // The guides go inside the same box as the picture, so they
+                  // turn with it when the horizon is corrected and flip with it
+                  // under obscura — and so a photographer can cut a frame
+                  // *against* the composition they laid out rather than from
+                  // memory of it.
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      OrientedImage(
+                        key: const Key('crop-image'),
+                        image: decoded,
+                        orientation: DisplayOrientation.of(
+                          photo.orientation,
+                          obscura: obscura,
+                        ),
+                      ),
+                      CustomPaint(
+                        key: const Key('crop-layers'),
+                        painter: LayerPainter(
+                          layers: ref.watch(layerBoardProvider).layers,
+                          transform: ViewTransform(
+                            imageSize: Size(frameAspect * 1000, 1000),
+                            viewport: Size(unit * frameAspect, unit),
+                            obscura: obscura,
+                          ),
+                          // No handles here: this screen is for choosing a
+                          // frame, and a guide that could be dragged while a
+                          // crop is being pulled would be two tools under one
+                          // pointer.
+                          showHandles: false,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
