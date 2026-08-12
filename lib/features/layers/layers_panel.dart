@@ -10,8 +10,8 @@ import 'layer_painter.dart';
 import 'layer_placement.dart';
 import 'patterns/pattern_library.dart';
 
-/// The composition panel: the library on top, what is on the photograph below,
-/// and the stroke controls under that.
+/// The composition panel: what is on the photograph, the library under it, and
+/// the stroke controls at the bottom.
 ///
 /// It follows the maquette except in one place, and deliberately. The maquette
 /// ends with a red "Enregistrer la composition" button; there is nothing for it
@@ -46,10 +46,16 @@ class LayersPanel extends ConsumerWidget {
                 horizontal: ObscuraSpacing.overlayPadding,
               ),
               children: [
+                // What is on the photograph comes before what could be. The
+                // palette is thirty tiles tall, and putting it first meant the
+                // list of placed layers — the only place a guide can be locked,
+                // reordered or taken off — was somewhere below the fold, on a
+                // screen whose whole subject was on the other side of it.
+                _Placed(board: board),
+                const SizedBox(height: ObscuraSpacing.controlGap),
                 for (final category in PatternCategory.values)
                   _Section(category: category),
                 const SizedBox(height: ObscuraSpacing.overlayPadding),
-                _Placed(board: board),
               ],
             ),
           ),
@@ -146,18 +152,26 @@ class _PatternTile extends ConsumerWidget {
     const size = Size(122, 74);
 
     return Tooltip(
-      richMessage: TextSpan(
-        children: [
-          TextSpan(
-            text: '${pattern.nom}\n',
-            style: ObscuraTypography.bodyMedium,
+      // Boxed to the width of two tiles. A tooltip carrying a whole definition
+      // lays itself out across the window by default and covers the rows below
+      // the one being pointed at — the palette hides itself as you read it.
+      richMessage: WidgetSpan(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 260),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(pattern.nom, style: ObscuraTypography.bodyMedium),
+              const SizedBox(height: 2),
+              Text(
+                pattern.definition,
+                style: ObscuraTypography.bodySmall
+                    .copyWith(color: ObscuraColors.textSecondary),
+              ),
+            ],
           ),
-          TextSpan(
-            text: pattern.definition,
-            style: ObscuraTypography.bodySmall
-                .copyWith(color: ObscuraColors.textSecondary),
-          ),
-        ],
+        ),
       ),
       child: GestureDetector(
         key: Key('palette-${pattern.code}'),
@@ -276,10 +290,27 @@ class _Placed extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'SUR CETTE PHOTOGRAPHIE',
-          style: ObscuraTypography.metadataLabel
-              .copyWith(color: ObscuraColors.textSecondary),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'SUR CETTE PHOTOGRAPHIE',
+                style: ObscuraTypography.metadataLabel
+                    .copyWith(color: ObscuraColors.textSecondary),
+              ),
+            ),
+            if (board.layers.length > 1)
+              TextButton(
+                key: const Key('layers-clear'),
+                onPressed: notifier.clear,
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  foregroundColor: ObscuraColors.textSecondary,
+                ),
+                child: Text('Tout retirer', style: ObscuraTypography.bodySmall),
+              ),
+          ],
         ),
         const SizedBox(height: ObscuraSpacing.controlGap),
         if (board.layers.isEmpty)

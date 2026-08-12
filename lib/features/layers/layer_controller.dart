@@ -120,6 +120,16 @@ class LayerBoardNotifier extends Notifier<LayerBoard> {
   /// both see a placement with no row id and both insert it.
   Future<void> _writes = Future<void>.value();
 
+  /// The read of the open photograph's composition, while it is in flight.
+  ///
+  /// Every write waits on it. Without that wait, placing a guide in the moment
+  /// between opening a photograph and its layers arriving writes a composition
+  /// consisting of that one guide — and `save` makes the stored set match what
+  /// it is given, so the layers still on their way back are deleted. It is a
+  /// narrow window and it cost seventeen guides the first time the app was
+  /// driven by hand.
+  Future<void>? _reading;
+
   @override
   LayerBoard build() => const LayerBoard();
 
@@ -133,7 +143,7 @@ class LayerBoardNotifier extends Notifier<LayerBoard> {
     _undo.clear();
     _redo.clear();
     state = LayerBoard(photoKey: photo.key.value, loading: true);
-    _load(photo);
+    _reading = _load(photo);
   }
 
   Future<void> _load(PhotoEntity photo) async {
@@ -209,6 +219,19 @@ class LayerBoardNotifier extends Notifier<LayerBoard> {
       ],
       clearSelection: state.selected == localId,
     );
+    _persist();
+  }
+
+  /// Takes every guide off this photograph.
+  ///
+  /// One undo step, not one per layer: clearing a composition is a single
+  /// decision, and ⌘Z has to be able to take it back in one press — which is
+  /// the whole reason this is offered at all rather than seventeen presses of a
+  /// small button.
+  void clear() {
+    if (state.layers.isEmpty) return;
+    _record();
+    state = state.copyWith(layers: const [], clearSelection: true);
     _persist();
   }
 
@@ -320,9 +343,17 @@ class LayerBoardNotifier extends Notifier<LayerBoard> {
   void _persist() {
     final photo = _photo;
     if (photo == null) return;
-    final snapshot = state.layers;
     _writes = _writes.then((_) async {
       try {
+        // Never write over rows that have not been read yet.
+        await _reading;
+        if (!ref.mounted || _photo?.key.value != photo.key.value) return;
+
+        // Taken here rather than when the write was asked for, so that what
+        // reaches the disk is the composition as it stands once the read has
+        // merged into it — the placement that triggered this *and* everything
+        // it was placed on top of.
+        final snapshot = state.layers;
         final store = ref.read(layerRepositoryProvider);
         final saved = await store.save(photo, snapshot);
         // The screen may have closed under the write. The row is on disk either

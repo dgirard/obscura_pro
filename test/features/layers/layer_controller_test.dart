@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:obscura_pro/features/catalog/photo_entity.dart';
@@ -262,6 +264,37 @@ void main() {
     });
   });
 
+  test('a guide placed before the read lands does not delete what was saved',
+      () async {
+    // The bug this pins down cost seventeen guides on a real photograph. The
+    // viewer opens the board on a frame; a guide is placed in the moment before
+    // the stored composition has come back; the write goes out with a set of
+    // one, and `save` — which makes the stored set match what it is given —
+    // deletes everything it was not told about.
+    final slow = _SlowStore([
+      const LayerPlacement(localId: 1, rowId: 1, patternCode: 'rule-of-thirds'),
+      const LayerPlacement(localId: 2, rowId: 2, patternCode: 'golden-spiral'),
+    ]);
+    final container = ProviderContainer(
+      overrides: [layerRepositoryProvider.overrideWithValue(slow)],
+    );
+    addTearDown(container.dispose);
+
+    final notifier = container.read(layerBoardProvider.notifier)
+      ..open(_photo());
+    notifier.place('symmetry');
+    expect(slow.written, isEmpty, reason: 'nothing may be written unread');
+
+    slow.release();
+    await pumpEventQueue();
+
+    expect(
+      slow.written.single.map((l) => l.patternCode),
+      containsAll(['rule-of-thirds', 'golden-spiral', 'symmetry']),
+    );
+    expect(container.read(layerBoardProvider).layers, hasLength(3));
+  });
+
   test('a store that refuses keeps the guides and says so', () async {
     final container = ProviderContainer(
       overrides: [layerRepositoryProvider.overrideWithValue(_BrokenStore())],
@@ -308,6 +341,38 @@ PhotoEntity _photo({
         ),
       ],
     );
+
+/// A store whose read only lands when the test says so.
+class _SlowStore implements LayerStore {
+  _SlowStore(this._stored);
+
+  final List<LayerPlacement> _stored;
+  final Completer<List<LayerPlacement>> _read = Completer();
+
+  /// Every set of placements `save` was handed, in order.
+  final List<List<LayerPlacement>> written = [];
+
+  int _nextRowId = 100;
+
+  void release() => _read.complete(_stored);
+
+  @override
+  Future<List<LayerPlacement>> layersOf(PhotoEntity photo) => _read.future;
+
+  @override
+  Future<List<LayerPlacement>> save(
+    PhotoEntity photo,
+    List<LayerPlacement> placements,
+  ) async {
+    written.add(placements);
+    return [
+      for (final placement in placements)
+        placement.rowId == null
+            ? placement.copyWith(rowId: _nextRowId++)
+            : placement,
+    ];
+  }
+}
 
 class _BrokenStore implements LayerStore {
   @override

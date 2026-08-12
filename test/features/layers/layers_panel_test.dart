@@ -93,6 +93,37 @@ void main() {
     expect(container.read(layerBoardProvider).layers, isEmpty);
   });
 
+  testWidgets('takes every guide off in one press, and one undo', (tester) async {
+    final container = await pump(tester);
+    await tapPattern(tester, 'rule-of-thirds');
+    await tapPattern(tester, 'symmetry');
+    await tapPattern(tester, 'golden-spiral');
+
+    await tester.tap(find.byKey(const Key('layers-clear')));
+    await tester.pump();
+    expect(container.read(layerBoardProvider).layers, isEmpty);
+
+    // One decision, one undo. Seventeen guides put back one at a time would be
+    // the button being worse than the seventeen presses it saved.
+    container.read(layerBoardProvider.notifier).undo();
+    await tester.pump();
+    expect(container.read(layerBoardProvider).layers, hasLength(3));
+  });
+
+  testWidgets('offers no clear-all until there is something to clear',
+      (tester) async {
+    await pump(tester);
+    expect(find.byKey(const Key('layers-clear')), findsNothing);
+
+    await tapPattern(tester, 'rule-of-thirds');
+    // One guide is a button away from gone already; the second is where a
+    // sweep starts being worth offering.
+    expect(find.byKey(const Key('layers-clear')), findsNothing);
+
+    await tapPattern(tester, 'symmetry');
+    expect(find.byKey(const Key('layers-clear')), findsOneWidget);
+  });
+
   testWidgets('the list locks, reorders and removes', (tester) async {
     final container = await pump(tester);
     await tapPattern(tester, 'rule-of-thirds');

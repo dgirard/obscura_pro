@@ -71,6 +71,13 @@ those keys to it; marking has none, so on a photograph with no layers on it the
 keys do nothing. Marks are written through, so the undo that is missing is a
 convenience rather than a way of losing a decision — but the table promises it.
 
+### The layers panel is a keystroke on the grid
+`L` opens it in the viewer, and the viewer's action bar now carries a button for
+it — but from the grid there is nothing: no way to see which photographs have a
+composition on them, and no badge on a cell that carries one. The spec's grid
+badges list RAW+JPG, marked and cropped/exported; a composed frame is not among
+them and arguably should be.
+
 ### An export is listed but not searchable
 The exports destination lists everything this Mac has exported, grouped by the
 dated folder it went into. On a long-running library that is a long list with no
@@ -127,6 +134,43 @@ undecided rather than decided.
 ---
 
 ## Decided
+
+### A write must never precede the read it will overwrite — 2026-08-12
+Found by running the app: seventeen guides placed on one photograph came back
+as one. `save` makes the stored composition match what it is handed, and the
+board handed it a set of one — the guide just placed — because the read of what
+was already on that photograph had not landed yet. Every row it had not been
+told about was deleted, which is exactly what the method is supposed to do and
+exactly the wrong thing to ask it in that moment.
+
+Writes now wait on the read, and the snapshot is taken when the write runs
+rather than when it was asked for, so what reaches the disk is the composition
+as it stands once the read has merged into it. The regression test drives the
+same order — open, place, then let the read land — and fails without the wait.
+
+The sixteen rows are gone; nothing could bring them back, and the honest note is
+that the app lost them.
+
+### Crop mode shows the crop — 2026-08-12
+Asked for after using it: "le recadrage ne fait pas crop d'image". The exports
+were in fact cropped — the files on disk are 5039 × 7559, 2563 × 2563,
+6790 × 3819 — but the screen never showed it. The photograph sat whole under a
+veil from the moment crop mode opened until a file appeared in a folder, so the
+rectangle read as a decoration and the export as a leap of faith.
+
+There is now a **Recadrer** button that applies the frame to the picture on
+screen, and **Modifier** to take it back off; touching a ratio, the horizon or
+the orientation returns to the frame automatically, because a screen still
+showing the previous crop would be the one thing this view exists not to do.
+Beside it, the size of the file the export will write — from the
+full-resolution frame, not from the window.
+
+Nothing about the export changed: the rectangle was always what got cut. What
+changed is that it can be seen before it is committed to.
+
+The control bar became a `Wrap` in the same pass. It was a single row, and a
+row that cannot fit drops whichever child is last — on a narrow window that is
+the export button, off the edge of the screen.
 
 ### The exports have a destination of their own — 2026-08-12
 Asked for the same day: an export landed in

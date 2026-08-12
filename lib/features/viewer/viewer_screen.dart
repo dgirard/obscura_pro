@@ -583,6 +583,16 @@ class _Chrome extends ConsumerWidget {
               active: marked,
               onPressed: onToggleMark,
             ),
+            // The panel has a key of its own, and a key is not a way of
+            // finding out that something exists. The spec's action bar lists
+            // the layers beside obscura and the crop, and it was the one entry
+            // missing from it.
+            _ChromeButton(
+              tooltip: 'Calques de composition (L)',
+              icon: Icons.grid_3x3,
+              active: ref.watch(layersPanelProvider),
+              onPressed: () => ref.read(layersPanelProvider.notifier).toggle(),
+            ),
             _ChromeButton(
               tooltip: 'Recadrer (C)',
               icon: Icons.crop,

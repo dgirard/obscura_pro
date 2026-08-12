@@ -125,6 +125,15 @@ class _CropScreenState extends ConsumerState<CropScreen> {
   String? _failure;
   bool _busy = false;
 
+  /// Whether the frame has been applied to the picture on screen.
+  ///
+  /// The screen used to show the whole photograph under a veil from the moment
+  /// it opened until the file was written, which left the crop looking like a
+  /// decoration: nothing on screen ever became the picture being made. Applying
+  /// it is not a step in the export — the rectangle was always what got cut —
+  /// it is the step that lets a photographer see what they are about to get.
+  bool _applied = false;
+
   /// The corner being dragged, or null while the whole rectangle is moving.
   CropCorner? _grabbed;
 
@@ -134,6 +143,34 @@ class _CropScreenState extends ConsumerState<CropScreen> {
     final height = (stream?.height ?? 2).toDouble();
     if (width <= 0 || height <= 0) return 3 / 2;
     return widget.photo.isPortrait ? height / width : width / height;
+  }
+
+  /// What the export will actually be, in pixels.
+  ///
+  /// Computed from the full-resolution preview rather than from what is on
+  /// screen — which is the whole point of the export path, and the number a
+  /// photographer needs before pressing the button rather than after. Null when
+  /// the frame has no readable preview to cut from.
+  String? _pixelSize(CropRect? crop) {
+    final source = widget.photo.viewerPreview;
+    if (crop == null || source == null) return null;
+    final stored = Size(
+      (source.width ?? 0).toDouble(),
+      (source.height ?? 0).toDouble(),
+    );
+    if (stored.isEmpty) return null;
+    final upright =
+        widget.photo.isPortrait ? stored.flipped : stored;
+    // The straightened canvas is what the rectangle lives in, so the source is
+    // measured the same way before the fraction is taken off it.
+    final canvas = Size(
+      upright.height *
+          CropRect.straightenedAspect(_frameAspect, crop.angleDegrees),
+      upright.height,
+    );
+    final width = (crop.rect.width * canvas.width).round();
+    final height = (crop.rect.height * canvas.height).round();
+    return '$width × $height px';
   }
 
   /// The mapping between screen and crop coordinates, for a given angle.
@@ -230,7 +267,7 @@ class _CropScreenState extends ConsumerState<CropScreen> {
   /// precise adjustment is the wrong way round.
   void _grab(DragStartDetails details) {
     final crop = ref.read(cropRectProvider);
-    if (crop == null) return;
+    if (crop == null || _applied) return;
     const slop = ObscuraStrokes.handleHitSize * 2.5;
     final transform = _transformFor(crop.angleDegrees);
 
@@ -247,7 +284,7 @@ class _CropScreenState extends ConsumerState<CropScreen> {
 
   void _drag(DragUpdateDetails details) {
     final crop = ref.read(cropRectProvider);
-    if (crop == null) return;
+    if (crop == null || _applied) return;
     final transform = _transformFor(crop.angleDegrees);
     final rect = transform.fittedRect;
     if (rect.width <= 0 || rect.height <= 0) return;
@@ -311,31 +348,41 @@ class _CropScreenState extends ConsumerState<CropScreen> {
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     _viewport = constraints.biggest;
+                    final frame = _Frame(
+                      photo: widget.photo,
+                      obscura: obscura,
+                      angleDegrees: crop?.angleDegrees ?? 0,
+                      frameAspect: _frameAspect,
+                      fitted: _transformFor(crop?.angleDegrees ?? 0).fittedRect,
+                    );
+
                     return GestureDetector(
                       onPanStart: _grab,
                       onPanUpdate: _drag,
                       onPanEnd: _release,
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          _Frame(
-                            photo: widget.photo,
-                            obscura: obscura,
-                            angleDegrees: crop?.angleDegrees ?? 0,
-                            frameAspect: _frameAspect,
-                            fitted: _transformFor(crop?.angleDegrees ?? 0)
-                                .fittedRect,
-                          ),
-                          if (crop != null)
-                            CustomPaint(
-                              painter: _CropOverlayPainter(
-                                crop: crop,
-                                transform: _transformFor(crop.angleDegrees),
-                                grabbed: _grabbed,
-                              ),
+                      child: _applied && crop != null
+                          ? _Cropped(
+                              key: const Key('crop-applied'),
+                              rect: _transformFor(crop.angleDegrees)
+                                  .screenRectOf(crop.rect),
+                              viewport: _viewport,
+                              child: frame,
+                            )
+                          : Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                frame,
+                                if (crop != null)
+                                  CustomPaint(
+                                    painter: _CropOverlayPainter(
+                                      crop: crop,
+                                      transform:
+                                          _transformFor(crop.angleDegrees),
+                                      grabbed: _grabbed,
+                                    ),
+                                  ),
+                              ],
                             ),
-                        ],
-                      ),
                     );
                   },
                 ),
@@ -343,9 +390,12 @@ class _CropScreenState extends ConsumerState<CropScreen> {
               _Controls(
                 crop: crop,
                 busy: _busy,
+                applied: _applied,
                 lastExport: _lastExport,
                 failure: _failure,
                 frameAspect: _frameAspect,
+                pixelSize: _pixelSize(crop),
+                onApply: () => setState(() => _applied = !_applied),
                 onExport: _export,
                 onClose: () => ref.read(cropModeProvider.notifier).leave(),
               ),
@@ -431,6 +481,46 @@ class _Frame extends ConsumerWidget {
   }
 }
 
+/// The picture with the frame applied: only what was kept, filling the canvas.
+///
+/// A transform of the same widget the editing view draws rather than a second
+/// rendering path — the pixels on screen are the ones the rectangle was
+/// measured against, so what is shown here cannot disagree with what the export
+/// will cut. It is still a preview: the file is written from the
+/// full-resolution frame, not from this.
+class _Cropped extends StatelessWidget {
+  const _Cropped({
+    super.key,
+    required this.rect,
+    required this.viewport,
+    required this.child,
+  });
+
+  /// The crop, in the screen coordinates [child] is laid out in.
+  final Rect rect;
+  final Size viewport;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (rect.isEmpty || viewport.isEmpty) return child;
+    final scale = math.min(
+      viewport.width / rect.width,
+      viewport.height / rect.height,
+    );
+
+    return ClipRect(
+      child: Transform(
+        transform: Matrix4.identity()
+          ..translateByDouble(viewport.width / 2, viewport.height / 2, 0, 1)
+          ..scaleByDouble(scale, scale, 1, 1)
+          ..translateByDouble(-rect.center.dx, -rect.center.dy, 0, 1),
+        child: SizedBox.expand(child: child),
+      ),
+    );
+  }
+}
+
 /// Everything outside the crop, dimmed; the crop itself, outlined.
 ///
 /// Dimmed rather than hidden: a photographer choosing a frame is choosing what
@@ -506,18 +596,27 @@ class _Controls extends ConsumerWidget {
   const _Controls({
     required this.crop,
     required this.busy,
+    required this.applied,
     required this.lastExport,
     required this.failure,
     required this.frameAspect,
+    required this.pixelSize,
+    required this.onApply,
     required this.onExport,
     required this.onClose,
   });
 
   final CropRect? crop;
   final bool busy;
+  final bool applied;
   final String? lastExport;
   final String? failure;
   final double frameAspect;
+
+  /// What the export will be, in pixels of the full-resolution frame.
+  final String? pixelSize;
+
+  final VoidCallback onApply;
   final VoidCallback onExport;
   final VoidCallback onClose;
 
@@ -529,73 +628,137 @@ class _Controls extends ConsumerWidget {
         color: ObscuraColors.elevated,
         border: Border(top: BorderSide(color: ObscuraColors.border)),
       ),
-      child: Row(
+      // Three groups on one line while there is room for them, and stacked
+      // when there is not. A single row cannot do that: the bar carries six
+      // ratios, a slider and three buttons, and on a narrow window the flex
+      // that gave way was whichever child happened to be last -- which is how
+      // the export button ends up off the edge of the screen.
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: ObscuraSpacing.overlayPadding,
+        runSpacing: ObscuraSpacing.controlGap,
         children: [
-          for (var i = 0; i < CropRatio.values.length; i++)
-            _RatioButton(
-              ratio: CropRatio.values[i],
-              index: i,
-              selected: crop?.ratio == CropRatio.values[i],
-              onPressed: () => ref
-                  .read(cropRectProvider.notifier)
-                  .chooseRatio(CropRatio.values[i], frameAspect),
-            ),
-          const SizedBox(width: ObscuraSpacing.overlayPadding),
-          _Straighten(
-            degrees: crop?.angleDegrees ?? 0,
-            onChanged: (value) => ref
-                .read(cropRectProvider.notifier)
-                .straighten(value, frameAspect),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < CropRatio.values.length; i++)
+                _RatioButton(
+                  ratio: CropRatio.values[i],
+                  index: i,
+                  selected: crop?.ratio == CropRatio.values[i],
+                  onPressed: () {
+                    ref
+                        .read(cropRectProvider.notifier)
+                        .chooseRatio(CropRatio.values[i], frameAspect);
+                    if (applied) onApply();
+                  },
+                ),
+              const SizedBox(width: ObscuraSpacing.controlGap),
+              _Straighten(
+                degrees: crop?.angleDegrees ?? 0,
+                onChanged: (value) {
+                  ref
+                      .read(cropRectProvider.notifier)
+                      .straighten(value, frameAspect);
+                  if (applied) onApply();
+                },
+              ),
+              IconButton(
+                key: const Key('crop-turn'),
+                tooltip: 'Portrait / paysage (R)',
+                // A square has no second orientation, so the control is
+                // disabled rather than present and inert.
+                onPressed: crop == null || !crop!.ratio.hasOrientations
+                    ? null
+                    : () {
+                        ref.read(cropRectProvider.notifier).turn(frameAspect);
+                        if (applied) onApply();
+                      },
+                icon: const Icon(Icons.screen_rotation_outlined, size: 18),
+                color: ObscuraColors.textSecondary,
+              ),
+            ],
           ),
-          const SizedBox(width: ObscuraSpacing.overlayPadding),
-          IconButton(
-            key: const Key('crop-turn'),
-            tooltip: 'Portrait / paysage (R)',
-            // A square has no second orientation, so the control is disabled
-            // rather than present and inert.
-            onPressed: crop == null || !crop!.ratio.hasOrientations
-                ? null
-                : () => ref.read(cropRectProvider.notifier).turn(frameAspect),
-            icon: const Icon(Icons.screen_rotation_outlined, size: 18),
-            color: ObscuraColors.textSecondary,
-          ),
-          const Spacer(),
           if (crop != null)
-            Padding(
-              padding: const EdgeInsets.only(right: ObscuraSpacing.overlayPadding),
-              child: Text(
-                'Glissez le cadre · tirez un coin pour resserrer',
-                style: ObscuraTypography.bodySmall
-                    .copyWith(color: ObscuraColors.textSecondary),
-              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  applied
+                      ? 'Cadre appliqué · l\'export écrira cette image'
+                      : 'Glissez le cadre · tirez un coin pour resserrer',
+                  key: const Key('crop-hint'),
+                  maxLines: 2,
+                  style: ObscuraTypography.bodySmall
+                      .copyWith(color: ObscuraColors.textSecondary),
+                ),
+                if (pixelSize != null) ...[
+                  const SizedBox(width: ObscuraSpacing.overlayPadding),
+                  // What the file will be, taken from the full-resolution
+                  // frame. The one number that answers "is it really going to
+                  // cut anything" before the button is pressed.
+                  Text(
+                    pixelSize!,
+                    key: const Key('crop-size'),
+                    style: ObscuraTypography.monoData
+                        .copyWith(color: ObscuraColors.textPrimary),
+                  ),
+                ],
+              ],
             ),
-          if (failure != null)
-            Padding(
-              padding: const EdgeInsets.only(right: ObscuraSpacing.overlayPadding),
-              child: Text(
-                failure!,
-                key: const Key('crop-failure'),
-                style: ObscuraTypography.bodySmall
-                    .copyWith(color: ObscuraColors.leicaRed),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (failure != null)
+                Padding(
+                  padding:
+                      const EdgeInsets.only(right: ObscuraSpacing.controlGap),
+                  child: Text(
+                    failure!,
+                    key: const Key('crop-failure'),
+                    maxLines: 2,
+                    style: ObscuraTypography.bodySmall
+                        .copyWith(color: ObscuraColors.leicaRed),
+                  ),
+                )
+              else if (lastExport != null)
+                Padding(
+                  padding:
+                      const EdgeInsets.only(right: ObscuraSpacing.controlGap),
+                  child: Text(
+                    'Exporté : $lastExport',
+                    key: const Key('crop-exported'),
+                    maxLines: 2,
+                    style: ObscuraTypography.monoData
+                        .copyWith(color: ObscuraColors.textSecondary),
+                  ),
+                ),
+              TextButton(onPressed: onClose, child: const Text('Fermer')),
+              const SizedBox(width: ObscuraSpacing.controlGap),
+              // The step the screen was missing. It changes nothing about what
+              // gets written -- the rectangle was always what was cut -- and
+              // everything about whether the photographer can see it first.
+              FilledButton.icon(
+                key: const Key('crop-apply'),
+                onPressed: crop == null ? null : onApply,
+                icon: Icon(
+                  applied ? Icons.edit_outlined : Icons.crop_free,
+                  size: 16,
+                ),
+                label: Text(applied ? 'Modifier' : 'Recadrer'),
               ),
-            )
-          else if (lastExport != null)
-            Padding(
-              padding: const EdgeInsets.only(right: ObscuraSpacing.overlayPadding),
-              child: Text(
-                'Exporté : $lastExport',
-                key: const Key('crop-exported'),
-                style: ObscuraTypography.monoData
-                    .copyWith(color: ObscuraColors.textSecondary),
+              const SizedBox(width: ObscuraSpacing.controlGap),
+              Tooltip(
+                message: 'Exporter le recadrage (⌘E)',
+                child: FilledButton.icon(
+                  key: const Key('crop-export'),
+                  onPressed: busy || crop == null ? null : onExport,
+                  icon: const Icon(Icons.ios_share, size: 16),
+                  label: Text(busy ? 'Export…' : 'Exporter'),
+                ),
               ),
-            ),
-          TextButton(onPressed: onClose, child: const Text('Fermer')),
-          const SizedBox(width: ObscuraSpacing.controlGap),
-          FilledButton.icon(
-            key: const Key('crop-export'),
-            onPressed: busy || crop == null ? null : onExport,
-            icon: const Icon(Icons.ios_share, size: 16),
-            label: Text(busy ? 'Export…' : 'Exporter (⌘E)'),
+            ],
           ),
         ],
       ),
@@ -621,7 +784,7 @@ class _Straighten extends StatelessWidget {
       children: [
         const Icon(Icons.straighten, size: 16, color: ObscuraColors.textSecondary),
         SizedBox(
-          width: 150,
+          width: 110,
           child: Slider(
             key: const Key('crop-straighten'),
             value: degrees.clamp(
@@ -681,7 +844,7 @@ class _RatioButton extends StatelessWidget {
           cursor: SystemMouseCursors.click,
           child: Container(
             margin: const EdgeInsets.only(right: ObscuraSpacing.controlGap / 2),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             decoration: BoxDecoration(
               color: selected
                   ? ObscuraColors.surfaceContainerHigh

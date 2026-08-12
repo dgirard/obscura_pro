@@ -183,6 +183,25 @@ void main() {
       expect(find.byKey(const Key('viewer-marked')), findsOneWidget);
     });
 
+    testWidgets('offers the layers panel without knowing the key', (tester) async {
+      final container = await _pump(tester, photos);
+
+      // The spec's action bar lists the layers beside obscura and the crop, and
+      // that entry was the one missing from it: the panel answered to `L` and
+      // to nothing a photographer could see.
+      final button = find.byWidgetPredicate(
+        (w) => w is Tooltip && w.message == 'Calques de composition (L)',
+      );
+      expect(button, findsOneWidget);
+      expect(container.read(layersPanelProvider), isFalse);
+
+      await tester.tap(button);
+      await tester.pump();
+
+      expect(container.read(layersPanelProvider), isTrue);
+      expect(find.byKey(const Key('layers-panel')), findsOneWidget);
+    });
+
     testWidgets('offers the same mark control as the grid does', (tester) async {
       final container = await _pump(tester, photos);
 
