@@ -47,6 +47,18 @@ void main() {
         missing: missing,
       );
 
+  /// Presses a control on a tile.
+  ///
+  /// The extra pump is the double-tap timer: the tile opens on a double click,
+  /// so a single tap inside it is held for the length of that window before the
+  /// button underneath it wins the gesture. The library grid behaves the same
+  /// way, and this is the cost of the idiom rather than a fault of the button.
+  Future<void> press(WidgetTester tester, String key) async {
+    await tester.tap(find.byKey(Key(key)));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+  }
+
   Future<void> pump(WidgetTester tester, List<ExportRecord> records) async {
     store = InMemoryExportStore(records);
     tester.view.physicalSize = const Size(900, 700);
@@ -114,8 +126,7 @@ void main() {
     final path = file('2026-08-12', 'a.jpg');
     await pump(tester, [record(id: 1, path: path)]);
 
-    await tester.tap(find.byKey(const Key('export-reveal-1')));
-    await tester.pump();
+    await press(tester, 'export-reveal-1');
 
     expect(finder.revealed, [path]);
   });
@@ -125,7 +136,7 @@ void main() {
     final path = file('2026-08-12', 'a.jpg');
     await pump(tester, [record(id: 1, path: path)]);
 
-    await tester.tap(find.byKey(const Key('export-remove-1')));
+    await press(tester, 'export-remove-1');
     await tester.pumpAndSettle();
 
     expect(finder.trashed, [path]);
@@ -139,7 +150,7 @@ void main() {
     final path = file('2026-08-12', 'a.jpg');
     await pump(tester, [record(id: 1, path: path)]);
 
-    await tester.tap(find.byKey(const Key('export-remove-1')));
+    await press(tester, 'export-remove-1');
     await tester.pumpAndSettle();
 
     expect(store.records, hasLength(1));

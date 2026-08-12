@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/theme.dart';
 import '../catalog/photo_entity.dart';
 import 'thumbnail_provider.dart';
+import 'thumbnail_tile.dart';
 
 /// What a cell asks the pipeline for: one photograph at one size.
 ///
@@ -31,12 +32,10 @@ final gridThumbnailProvider = FutureProvider.autoDispose
 
 /// One photograph in the library grid.
 ///
-/// The tile is square whatever the frame's shape, and the photograph is drawn
-/// inside it whole. That is a deliberate departure from the maquette's
-/// edge-to-edge crops: this grid exists to decide whether a frame works, and a
-/// cell that crops is showing the user a composition they did not shoot. The
-/// placeholder colour fills the tile behind the image, so a row still reads as
-/// a row of blocks rather than of floating rectangles.
+/// The tile itself is [ThumbnailTile], shared with the exports grid: two
+/// screens showing pictures in a grid have no reason to look like two different
+/// applications. What is particular to a photograph on a card lives here — the
+/// decode request, the format badge, the mark.
 class PhotoCell extends ConsumerStatefulWidget {
   const PhotoCell({
     super.key,
@@ -74,12 +73,9 @@ class PhotoCell extends ConsumerStatefulWidget {
 }
 
 class _PhotoCellState extends ConsumerState<PhotoCell> {
-  bool _hovered = false;
-
   @override
   Widget build(BuildContext context) {
     final photo = widget.photo;
-    final selected = widget.selected;
     final marked = widget.marked;
     final placeholderColor = widget.placeholderColor;
 
@@ -91,56 +87,24 @@ class _PhotoCellState extends ConsumerState<PhotoCell> {
             ),
           );
 
-    final fill = placeholderColor == null
-        ? ObscuraColors.surfaceContainer
-        : Color(placeholderColor);
-
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: Semantics(
-        label: '${photo.radical}, ${photo.formatBadge}',
-        selected: selected,
-        child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: fill,
-          borderRadius: BorderRadius.circular(ObscuraRadii.base),
-          border: Border.all(
-            color: selected ? ObscuraColors.leicaRed : ObscuraColors.border,
-            width:
-                selected ? ObscuraStrokes.selection : ObscuraStrokes.hairline,
-          ),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(ObscuraRadii.base),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              _Image(photo: photo, thumbnail: thumbnail),
-              if (marked) const _MarkedWash(),
-              Positioned(
-                top: ObscuraSpacing.controlGap / 2,
-                right: ObscuraSpacing.controlGap / 2,
-                child: _FormatBadge(photo: photo),
-              ),
-              // Shown when marked, and offered on hover when not: the control
-              // and the state are the same thing in the same place, so seeing
-              // one teaches the other.
-              if (marked || _hovered)
-                Positioned(
-                  top: ObscuraSpacing.controlGap / 2,
-                  left: ObscuraSpacing.controlGap / 2,
-                  child: _TrashButton(
-                    key: marked ? Key('marked-${photo.dcfPath}') : null,
-                    buttonKey: Key('mark-${photo.dcfPath}'),
-                    marked: marked,
-                    onPressed: widget.onToggleMark,
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
+    return ThumbnailTile(
+      semanticLabel: '${photo.radical}, ${photo.formatBadge}',
+      selected: widget.selected,
+      fill: placeholderColor == null ? null : Color(placeholderColor),
+      image: _Image(photo: photo, thumbnail: thumbnail),
+      wash: marked
+          ? ObscuraColors.statusDelete.withValues(alpha: 0.34)
+          : null,
+      badge: TileBadge(key: Key('badge-${photo.dcfPath}'), text: photo.formatBadge),
+      // Shown when marked, and offered on hover when not: the control and the
+      // state are the same thing in the same place, so seeing one teaches the
+      // other.
+      cornerOnHover: !marked,
+      corner: _TrashButton(
+        key: marked ? Key('marked-${photo.dcfPath}') : null,
+        buttonKey: Key('mark-${photo.dcfPath}'),
+        marked: marked,
+        onPressed: widget.onToggleMark,
       ),
     );
   }
@@ -209,46 +173,6 @@ class _Unreadable extends StatelessWidget {
       ),
     );
   }
-}
-
-class _FormatBadge extends StatelessWidget {
-  const _FormatBadge({required this.photo});
-
-  final PhotoEntity photo;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: Key('badge-${photo.dcfPath}'),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        // Opaque rather than translucent: the badge sits over unknown pixels,
-        // and a label that is only legible over dark frames is not a label.
-        color: ObscuraColors.canvas.withValues(alpha: 0.82),
-        borderRadius: BorderRadius.circular(ObscuraRadii.sm),
-      ),
-      child: Text(
-        photo.formatBadge,
-        style: ObscuraTypography.metadataLabel
-            .copyWith(color: ObscuraColors.textPrimary),
-      ),
-    );
-  }
-}
-
-/// The red cast over a photograph marked for deletion.
-///
-/// A wash rather than a border, because the border is already spoken for by
-/// selection: the cell the keyboard is on and the cell that is going to be
-/// deleted are different facts and a photographer has to be able to see both at
-/// once.
-class _MarkedWash extends StatelessWidget {
-  const _MarkedWash();
-
-  @override
-  Widget build(BuildContext context) => ColoredBox(
-        color: ObscuraColors.statusDelete.withValues(alpha: 0.34),
-      );
 }
 
 /// The mark, and the way to set it.

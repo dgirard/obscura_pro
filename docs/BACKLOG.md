@@ -170,6 +170,25 @@ user's selection in the panel *is* the grant, and there is no way to reach a
 volume they have not pointed at. Seeing a card in the list and being allowed to
 read it are different things, and no amount of interface removes the difference.
 
+### One tile, two grids — 2026-08-12
+Asked plainly: "pourquoi ce n'est pas le même viewer de vignettes pour les
+exports et pour la carte SD". No good reason — the exports screen was written as
+a list with a small picture at the left, the card as a grid of tiles, and the
+two looked like two applications.
+
+`ThumbnailTile` now holds everything that makes a tile a tile: the fill behind
+the image, the selection border, the badge, the corner control, the strip along
+the bottom. The library cell and the export cell each supply only what is
+particular to them — a decode request and a format badge on one side, a file and
+its crop on the other — and the exports grid takes the library's own column
+geometry, so a session of exports reads at the same size and rhythm as the card
+it came from.
+
+One difference is deliberate: the export tile's controls are always visible,
+where the card's mark button appears on hover. The library grid is for looking;
+the exports screen is a filing cabinet, and a control nobody can see until they
+wave at it is a control they have to be told about.
+
 ### The exports screen reads the folder — 2026-08-12
 Asked for in the same breath: "la visionneuse de l'export doit permettre de voir
 toutes les images du répertoire". It listed the `crop_export` rows, which is a

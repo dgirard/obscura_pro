@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme.dart';
 import '../../infra/finder/finder_channel.dart';
+import '../grid/grid_screen.dart' show LibraryGrid;
+import '../grid/thumbnail_tile.dart';
 import 'export_store.dart';
 
 /// Overridden in tests, which have no Finder.
@@ -161,13 +163,15 @@ class _ExportsScreenState extends ConsumerState<ExportsScreen> {
                 ? const _Empty()
                 : ListView(
                     key: const Key('exports-list'),
-                    padding: const EdgeInsets.all(ObscuraSpacing.overlayPadding),
+                    padding: const EdgeInsets.all(ObscuraSpacing.gridGutter),
                     children: [
                       for (final group in _bySession(records)) ...[
                         Padding(
-                          padding: const EdgeInsets.only(
-                            top: ObscuraSpacing.controlGap,
-                            bottom: ObscuraSpacing.controlGap / 2,
+                          padding: const EdgeInsets.fromLTRB(
+                            ObscuraSpacing.controlGap / 2,
+                            ObscuraSpacing.overlayPadding,
+                            0,
+                            ObscuraSpacing.controlGap,
                           ),
                           child: Text(
                             group.$1.isEmpty ? 'Ailleurs' : group.$1,
@@ -175,13 +179,28 @@ class _ExportsScreenState extends ConsumerState<ExportsScreen> {
                                 .copyWith(color: ObscuraColors.textSecondary),
                           ),
                         ),
-                        for (final record in group.$2)
-                          _ExportRow(
-                            record: record,
-                            onOpen: () => _open(record),
-                            onReveal: () => _reveal(record),
-                            onRemove: () => _remove(record),
+                        // The library grid's own geometry, so a session of
+                        // exports reads at the same size and rhythm as the card
+                        // it came from.
+                        LayoutBuilder(
+                          builder: (context, constraints) => GridView.count(
+                            crossAxisCount:
+                                LibraryGrid.columnsFor(constraints.maxWidth),
+                            mainAxisSpacing: ObscuraSpacing.gridGutter,
+                            crossAxisSpacing: ObscuraSpacing.gridGutter,
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            children: [
+                              for (final record in group.$2)
+                                _ExportTile(
+                                  record: record,
+                                  onOpen: () => _open(record),
+                                  onReveal: () => _reveal(record),
+                                  onRemove: () => _remove(record),
+                                ),
+                            ],
                           ),
+                        ),
                       ],
                     ],
                   ),
@@ -257,8 +276,74 @@ class _Empty extends StatelessWidget {
       );
 }
 
-class _ExportRow extends StatelessWidget {
-  const _ExportRow({
+/// One exported file, in the same tile the library grid uses.
+class _ExportTile extends ConsumerWidget {
+  const _ExportTile({
+    required this.record,
+    required this.onOpen,
+    required this.onReveal,
+    required this.onRemove,
+  });
+
+  final ExportRecord record;
+  final VoidCallback onOpen;
+  final VoidCallback onReveal;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return GestureDetector(
+      key: Key('export-${record.id}'),
+      onDoubleTap: record.missing ? null : onOpen,
+      child: ThumbnailTile(
+        semanticLabel: '${record.fileName}, ${record.detail}',
+        image: record.missing
+            ? const Center(
+                child: Icon(
+                  Icons.image_not_supported_outlined,
+                  size: 22,
+                  color: ObscuraColors.textSecondary,
+                ),
+              )
+            : Image(
+                image: ref.watch(exportImageProvider)(record.path),
+                fit: BoxFit.contain,
+                errorBuilder: (context, _, _) => const Center(
+                  child: Icon(
+                    Icons.broken_image_outlined,
+                    size: 22,
+                    color: ObscuraColors.textSecondary,
+                  ),
+                ),
+              ),
+        badge: TileBadge(
+          // What this app knows about the file: the crop it cut, or that it
+          // only found it.
+          text: record.untracked ? 'TROUVÉ' : record.ratio,
+          color: record.untracked
+              ? ObscuraColors.textSecondary
+              : ObscuraColors.textPrimary,
+        ),
+        footer: _Footer(
+          record: record,
+          onOpen: onOpen,
+          onReveal: onReveal,
+          onRemove: onRemove,
+        ),
+      ),
+    );
+  }
+}
+
+/// The strip along the bottom of a tile: what the file is, and what can be done
+/// to it.
+///
+/// Always there rather than on hover, unlike the library grid's single mark
+/// button. This screen is a filing cabinet and the acts are the point of it; a
+/// control nobody can see until they wave at it is a control they have to be
+/// told about.
+class _Footer extends StatelessWidget {
+  const _Footer({
     required this.record,
     required this.onOpen,
     required this.onReveal,
@@ -273,45 +358,47 @@ class _ExportRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      key: Key('export-${record.id}'),
-      margin: const EdgeInsets.only(bottom: ObscuraSpacing.controlGap),
-      padding: const EdgeInsets.all(ObscuraSpacing.controlGap),
-      decoration: BoxDecoration(
-        color: ObscuraColors.surfaceContainerLowest,
-        border: Border.all(color: ObscuraColors.border),
-        borderRadius: BorderRadius.circular(ObscuraRadii.base),
+      padding: const EdgeInsets.fromLTRB(
+        ObscuraSpacing.controlGap,
+        ObscuraSpacing.controlGap / 2,
+        ObscuraSpacing.controlGap / 2,
+        ObscuraSpacing.controlGap / 2,
       ),
+      color: ObscuraColors.canvas.withValues(alpha: 0.82),
       child: Row(
         children: [
-          _Thumbnail(record: record),
-          const SizedBox(width: ObscuraSpacing.overlayPadding),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   record.fileName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: ObscuraTypography.bodyMedium.copyWith(
+                  style: ObscuraTypography.bodySmall.copyWith(
                     color: record.missing
                         ? ObscuraColors.textSecondary
                         : ObscuraColors.textPrimary,
                   ),
                 ),
                 Text(
-                  record.detail,
-                  key: Key('export-detail-${record.id}'),
-                  style: ObscuraTypography.monoData
-                      .copyWith(color: ObscuraColors.textSecondary),
-                ),
-                if (record.missing)
-                  Text(
-                    'Déplacé ou supprimé depuis le Finder.',
-                    key: Key('export-missing-${record.id}'),
-                    style: ObscuraTypography.bodySmall
-                        .copyWith(color: ObscuraColors.leicaRed),
+                  record.missing
+                      ? 'Déplacé ou supprimé depuis le Finder.'
+                      : record.detail,
+                  key: Key(
+                    record.missing
+                        ? 'export-missing-${record.id}'
+                        : 'export-detail-${record.id}',
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ObscuraTypography.bodySmall.copyWith(
+                    color: record.missing
+                        ? ObscuraColors.leicaRed
+                        : ObscuraColors.textSecondary,
+                  ),
+                ),
               ],
             ),
           ),
@@ -338,50 +425,6 @@ class _ExportRow extends StatelessWidget {
             onPressed: onRemove,
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// The exported file itself, small.
-///
-/// Read from the file rather than from the card's preview: this list is about
-/// what was written, and a thumbnail of the uncropped frame would be showing
-/// the one thing the export is not.
-class _Thumbnail extends ConsumerWidget {
-  const _Thumbnail({required this.record});
-
-  final ExportRecord record;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    const height = 56.0;
-    if (record.missing) {
-      return const SizedBox(
-        width: height * 1.5,
-        height: height,
-        child: Icon(Icons.image_not_supported_outlined,
-            size: 18, color: ObscuraColors.textSecondary),
-      );
-    }
-
-    return SizedBox(
-      width: height * 1.5,
-      height: height,
-      child: Image(
-        // Device-pixel sized: a full-resolution export decoded at its own size
-        // would be tens of megabytes per row.
-        image: ResizeImage(
-          ref.watch(exportImageProvider)(record.path),
-          height: (height * MediaQuery.devicePixelRatioOf(context)).round(),
-          policy: ResizeImagePolicy.fit,
-        ),
-        fit: BoxFit.contain,
-        errorBuilder: (context, _, _) => const Icon(
-          Icons.broken_image_outlined,
-          size: 18,
-          color: ObscuraColors.textSecondary,
-        ),
       ),
     );
   }
