@@ -25,12 +25,12 @@ void main() {
 
   /// Where an export would be.
   ///
-  /// A path and no file. Nothing here touches the disk on purpose: whether the
-  /// file is there is the store's answer — [ExportRecord.missing], faked below
-  /// — and real file I/O inside `testWidgets` never completes, because the body
-  /// runs on the test binding's own clock and the completion is delivered on
-  /// the real one. The pixels are drawn through [exportImageProvider], which
-  /// the pump points at memory for the same reason.
+  /// A path and no file. Nothing here touches the disk on purpose: which files
+  /// exist is the store's answer, and real file I/O inside `testWidgets` never
+  /// completes, because the body runs on the test binding's own clock and the
+  /// completion is delivered on the real one. The pixels are drawn through
+  /// [exportImageProvider], which the pump points at memory for the same
+  /// reason.
   String file(String session, String name) =>
       p.join('/Users/x/Pictures/Q3Culling/Exports', session, name);
 
@@ -39,7 +39,6 @@ void main() {
     required String path,
     String radical = '100LEICA/L1000001',
     String ratio = '3:2',
-    bool missing = false,
   }) =>
       ExportRecord(
         id: id,
@@ -50,8 +49,7 @@ void main() {
         createdAt: DateTime(2026, 8, 12, 11, id),
         pixelWidth: 9520,
         pixelHeight: 6336,
-        byteSize: missing ? null : 2048,
-        missing: missing,
+        byteSize: 2048,
       );
 
   /// Presses a control on a tile.
@@ -156,20 +154,6 @@ void main() {
       find.text('100LEICA/L1000001  ·  3:2  ·  9520 × 6336 px'),
       findsNWidgets(3),
     );
-  });
-
-  testWidgets('shows an export the user has moved as moved', (tester) async {
-    await pump(tester, [
-      record(id: 1, path: file('2026-08-01', 'gone.jpg'), missing: true),
-    ]);
-
-    expect(find.byKey(const Key('export-missing-1')), findsOneWidget);
-    // Nothing to open and nothing to reveal: the file is not there, and
-    // offering either would be the app pretending otherwise.
-    expect(find.byKey(const Key('export-open-1')), findsNothing);
-    expect(find.byKey(const Key('export-reveal-1')), findsNothing);
-    // Taking the row off the list is still offered, and is all it does.
-    expect(find.byKey(const Key('export-remove-1')), findsOneWidget);
   });
 
   testWidgets('reveals a file in the Finder', (tester) async {

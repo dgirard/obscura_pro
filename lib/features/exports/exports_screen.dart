@@ -28,7 +28,6 @@ final exportPhotosProvider = FutureProvider<List<PhotoEntity>>((ref) async {
   final records = await ref.watch(exportsProvider.future);
   final photos = <PhotoEntity>[];
   for (final record in records) {
-    if (record.missing) continue;
     final photo = await readExportedPhoto(File(record.path));
     if (photo != null) photos.add(photo);
   }
@@ -107,7 +106,7 @@ class _ExportsScreenState extends ConsumerState<ExportsScreen> {
   /// The file to the Trash first, the row second.
   ///
   /// That order is the survivable one: a crash between the two leaves a row
-  /// pointing at a file that is in the Trash, which this list shows as missing.
+  /// pointing at a file that is in the Trash, which this list drops.
   /// The other order would leave a file nothing in the app remembers.
   Future<void> _remove(ExportRecord record) async {
     final finder = ref.read(finderProvider);
@@ -515,28 +514,23 @@ class _ExportTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
       key: Key('export-${record.id}'),
-      onDoubleTap: record.missing ? null : onOpen,
+      onDoubleTap: onOpen,
       child: ThumbnailTile(
         semanticLabel: '${record.fileName}, ${record.detail}',
-        image: record.missing
-            ? const Center(
-                child: Icon(
-                  Icons.image_not_supported_outlined,
-                  size: 22,
-                  color: ObscuraColors.textSecondary,
-                ),
-              )
-            : Image(
-                image: ref.watch(exportImageProvider)(record.path),
-                fit: BoxFit.contain,
-                errorBuilder: (context, _, _) => const Center(
-                  child: Icon(
-                    Icons.broken_image_outlined,
-                    size: 22,
-                    color: ObscuraColors.textSecondary,
-                  ),
-                ),
-              ),
+        image: Image(
+          image: ref.watch(exportImageProvider)(record.path),
+          fit: BoxFit.contain,
+          // The file was there when the folder was read and is not there now:
+          // it went between the two. The list is refreshed by the acts that
+          // remove files, and by the refresh button for everything else.
+          errorBuilder: (context, _, _) => const Center(
+            child: Icon(
+              Icons.broken_image_outlined,
+              size: 22,
+              color: ObscuraColors.textSecondary,
+            ),
+          ),
+        ),
         badge: TileBadge(
           // What this app knows about the file: the crop it cut, or that it
           // only found it.
@@ -598,50 +592,36 @@ class _Footer extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: ObscuraTypography.bodySmall.copyWith(
-                    color: record.missing
-                        ? ObscuraColors.textSecondary
-                        : ObscuraColors.textPrimary,
+                    color: ObscuraColors.textPrimary,
                   ),
                 ),
                 Text(
-                  record.missing
-                      ? 'Déplacé ou supprimé depuis le Finder.'
-                      : record.detail,
-                  key: Key(
-                    record.missing
-                        ? 'export-missing-${record.id}'
-                        : 'export-detail-${record.id}',
-                  ),
+                  record.detail,
+                  key: Key('export-detail-${record.id}'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: ObscuraTypography.bodySmall.copyWith(
-                    color: record.missing
-                        ? ObscuraColors.leicaRed
-                        : ObscuraColors.textSecondary,
+                    color: ObscuraColors.textSecondary,
                   ),
                 ),
               ],
             ),
           ),
-          if (!record.missing) ...[
-            _RowButton(
-              keyName: 'export-open-${record.id}',
-              tooltip: 'Voir en grand',
-              icon: Icons.open_in_full,
-              onPressed: onOpen,
-            ),
-            _RowButton(
-              keyName: 'export-reveal-${record.id}',
-              tooltip: 'Afficher dans le Finder',
-              icon: Icons.folder_open,
-              onPressed: onReveal,
-            ),
-          ],
+          _RowButton(
+            keyName: 'export-open-${record.id}',
+            tooltip: 'Voir en grand',
+            icon: Icons.open_in_full,
+            onPressed: onOpen,
+          ),
+          _RowButton(
+            keyName: 'export-reveal-${record.id}',
+            tooltip: 'Afficher dans le Finder',
+            icon: Icons.folder_open,
+            onPressed: onReveal,
+          ),
           _RowButton(
             keyName: 'export-remove-${record.id}',
-            tooltip: record.missing
-                ? 'Retirer de la liste'
-                : 'Mettre à la corbeille du Mac',
+            tooltip: 'Mettre à la corbeille du Mac',
             icon: Icons.delete_outline,
             onPressed: onRemove,
           ),
