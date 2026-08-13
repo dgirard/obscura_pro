@@ -95,7 +95,11 @@ class PhotoEntity {
   }
 
   /// `100LEICA/L1000863` — stable across remounts, unlike an absolute path.
-  String get dcfPath => '$folder/$radical';
+  ///
+  /// A photograph read from the Mac has no DCF folder, and gets its name alone
+  /// rather than a leading slash: the string is used as a name in the catalogue
+  /// and must not look like a path to anywhere.
+  String get dcfPath => folder.isEmpty ? radical : '$folder/$radical';
 
   bool get hasRaw => files.any((f) => f.kind == PhotoFileKind.raw);
   bool get hasJpeg => files.any((f) => f.kind == PhotoFileKind.jpeg);
