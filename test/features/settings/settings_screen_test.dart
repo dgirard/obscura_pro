@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:obscura_pro/app/theme.dart';
+import 'package:obscura_pro/features/exports/export_folder.dart';
 import 'package:obscura_pro/features/settings/settings_screen.dart';
 import 'package:obscura_pro/features/settings/settings_store.dart';
 import 'package:obscura_pro/features/volume_select/card_selection.dart';
@@ -31,6 +32,7 @@ void main() {
     WidgetTester tester, {
     required String? picks,
     List<MountedVolume> volumes = const [],
+    bool settingsWritable = true,
   }) async {
     tester.view.physicalSize = const Size(1000, 1400);
     tester.view.devicePixelRatio = 1;
@@ -41,7 +43,8 @@ void main() {
         overrides: [
           // Not the real store: it reads a file, and real file I/O inside
           // `testWidgets` never completes on the test binding's clock.
-          settingsProvider.overrideWith(_InMemorySettings.new),
+          settingsProvider
+              .overrideWith(() => _InMemorySettings(writable: settingsWritable)),
           // Memory-backed for the same reason: the real store persists its
           // entries to a file, and that write never lands under the test
           // binding's clock. The bridge is still the real seam, so what the
@@ -60,6 +63,10 @@ void main() {
     await tester.pump();
     await tester.pump();
   }
+
+  BookmarkStore bookmarksOf(WidgetTester tester) =>
+      ProviderScope.containerOf(tester.element(find.byType(SettingsScreen)))
+          .read(bookmarkStoreProvider);
 
   String folderText(WidgetTester tester) =>
       tester.widget<Text>(find.byKey(const Key('settings-export-folder'))).data!;
@@ -107,6 +114,24 @@ void main() {
     expect(find.byKey(const Key('settings-failure')), findsNothing);
   });
 
+  testWidgets('a folder that could not be written down is not left granted',
+      (tester) async {
+    await pump(tester, picks: support.path, settingsWritable: false);
+
+    await tester.tap(find.byKey(const Key('settings-choose-folder')));
+    await tester.pump();
+    await tester.pump();
+
+    // The panel says the previous choice still stands, so it has to: a grant
+    // left behind is the folder exports would actually be written to, and the
+    // one the panel names would be the one that is wrong.
+    expect(find.byKey(const Key('settings-failure')), findsOneWidget);
+    expect(
+      await bookmarksOf(tester).resolve(ExportFolders.bookmarkKey),
+      isA<BookmarkAbsent>(),
+    );
+  });
+
   testWidgets('a folder that cannot be remembered is refused, not stored',
       (tester) async {
     bridge.encodeThrows = StateError('no bookmark for you');
@@ -126,11 +151,16 @@ void main() {
 
 /// Settings that live in memory for the length of a test.
 class _InMemorySettings extends SettingsNotifier {
+  _InMemorySettings({this.writable = true});
+
+  final bool writable;
+
   @override
   Future<Settings> build() async => const Settings();
 
   @override
   Future<bool> save(Settings next) async {
+    if (!writable) return false;
     state = AsyncData(next);
     return true;
   }
@@ -148,6 +178,9 @@ class _MemoryBookmarks extends BookmarkStore {
   Future<void> save(String key, String path) async {
     entries[key] = await _bridge.encode(Directory(path));
   }
+
+  @override
+  Future<void> forget(String key) async => entries.remove(key);
 
   @override
   Future<BookmarkResolution> resolve(String key) async {

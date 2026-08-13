@@ -73,18 +73,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       return;
     }
     if (!mounted) return;
-    await _save(settings.copyWith(exportFolder: chosen));
+    final written = await _save(settings.copyWith(exportFolder: chosen));
+    if (written) return;
+
+    // The panel says the previous choice stands, so the grant has to go back
+    // too: the folder that is actually read on the next launch is the one the
+    // bookmark resolves to, and leaving it here would make the sentence above
+    // name a folder nothing writes to.
+    await ref.read(bookmarkStoreProvider).forget(ExportFolders.bookmarkKey);
   }
 
-  Future<void> _save(Settings next) async {
+  Future<bool> _save(Settings next) async {
     final written = await ref.read(settingsProvider.notifier).save(next);
-    if (!mounted) return;
+    if (!mounted) return written;
     setState(() {
       _failure = written
           ? null
           : 'Réglage non enregistré : le fichier de préférences n\'a pas pu '
               'être écrit. Le choix précédent reste en vigueur.';
     });
+    return written;
   }
 
   @override

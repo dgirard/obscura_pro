@@ -125,7 +125,11 @@ class ExportFolders {
     final chosen = await _chosenFolder();
     if (chosen == null) return body(resolved.directory);
 
-    final held = (await bookmarks.resolve(bookmarkKey)) as BookmarkResolved;
+    // Resolved again rather than cast from the check above: the two calls are
+    // separated by an await, and a card pulled or a folder renamed in between
+    // would turn a cast into a crash on the one path that exists to be careful.
+    final held = await bookmarks.resolve(bookmarkKey);
+    if (held is! BookmarkResolved) return null;
     return bookmarks.withAccess(held.path, () => body(resolved.directory));
   }
 
