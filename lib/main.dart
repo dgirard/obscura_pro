@@ -7,7 +7,6 @@ import 'app/theme.dart';
 import 'features/grid/grid_screen.dart';
 import 'infra/card_access/models.dart';
 import 'features/volume_select/card_selection.dart';
-import 'features/volume_select/volume_screen.dart';
 
 void main() {
   runApp(const ProviderScope(child: ObscuraProApp()));
@@ -66,11 +65,12 @@ class _SessionState extends ConsumerState<_Session> {
       ref.read(cardSelectionProvider.notifier).openKnown();
     });
 
-    final open = ref.watch(cardSelectionProvider) is CardSelectionOpened;
-
-    return AppShell(
-      content: open ? const LibraryScreen() : const VolumeScreen(),
-      statusBar: open ? const LibraryStatusBar() : null,
+    // The window is the sidebar and whatever the chosen destination shows.
+    // Whether a card is in the reader is a question for the destinations that
+    // are about a card, and [LibraryScreen] is where it is asked.
+    return const AppShell(
+      content: LibraryScreen(),
+      statusBar: LibraryStatusBar(),
     );
   }
 }

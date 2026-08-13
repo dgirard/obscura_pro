@@ -10,6 +10,7 @@ import '../../app/theme.dart';
 import '../catalog/dcf_scanner.dart';
 import '../catalog/photo_entity.dart';
 import '../volume_select/card_selection.dart';
+import '../volume_select/volume_screen.dart';
 import '../../app/app_shell.dart';
 import '../../infra/safety/io_errors.dart';
 import '../../infra/safety/parasite_guard.dart';
@@ -406,6 +407,10 @@ class LibraryScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // The card gate belongs to the two destinations that are about a card, not
+    // to the window. Everything else here reads from the Mac and works with the
+    // reader empty; making them wait for a card was the app asking for
+    // something it does not need.
     switch (ref.watch(librarySectionProvider)) {
       case LibrarySection.trash:
         return const TrashScreen();
@@ -416,6 +421,13 @@ class LibraryScreen extends ConsumerWidget {
       case LibrarySection.library:
       case LibrarySection.card:
         break;
+    }
+
+    // In the content area rather than over the window: the sidebar stays
+    // usable, so a photographer who came here by accident can leave without
+    // finding a card first.
+    if (ref.watch(cardSelectionProvider) is! CardSelectionOpened) {
+      return const VolumeScreen();
     }
     return ref.watch(cardCatalogProvider).when(
           loading: () => const Center(
