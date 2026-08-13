@@ -107,6 +107,15 @@ class MarkedForDeletionNotifier extends Notifier<Marks> {
   /// Takes the entity rather than its key: what gets written down is every file
   /// of the photograph, and a key alone cannot say which those are.
   Future<MarkReport?> toggle(PhotoEntity photo) async {
+    // Refused before the badge moves, and refused again by the store: this
+    // mark is about removing a frame from a card, and a photograph read from
+    // the Mac has no card path to remove. One predicate, two places that ask
+    // it, because a guard that lives in one screen is lost the moment a second
+    // screen learns to mark.
+    if (!photo.isOnCard) {
+      return const MarkReport(MarkEffect.refused, detail: markRefusedOffCard);
+    }
+
     final key = photo.key.value;
     final wasMarked = state.contains(key);
     state = state.withKeys(
@@ -117,6 +126,14 @@ class MarkedForDeletionNotifier extends Notifier<Marks> {
       final store = await _store;
       final report =
           wasMarked ? await store.unmark(photo) : await store.mark(photo);
+      if (report.effect == MarkEffect.refused) {
+        // Nothing was written, so nothing is marked: the badge goes back where
+        // it was rather than showing a decision the app refused to record.
+        state = state.withKeys(
+          wasMarked ? {...state.keys, key} : ({...state.keys}..remove(key)),
+        );
+        return report;
+      }
       if (report.effect == MarkEffect.movedOffCard) {
         // The photograph is not on the card any more, so there is nothing left
         // to decide about it — and the catalogue is now describing a card that

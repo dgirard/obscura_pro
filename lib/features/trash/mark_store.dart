@@ -17,6 +17,10 @@ enum MarkEffect {
   /// The mark is gone. Nothing was on the card to undo, because marking never
   /// put anything there.
   withdrawn,
+
+  /// Nothing was recorded, and nothing should have been: the photograph is a
+  /// file on the Mac, and this mark is about removing a frame from a card.
+  refused,
 }
 
 /// The outcome of one decision, in the terms the interface has to report it.
@@ -32,6 +36,17 @@ class MarkReport {
 
   bool get isClean => detail == null;
 }
+
+/// What the app says when a mark is asked for a photograph that is not on a
+/// card.
+///
+/// One sentence in one place: the notifier refuses before the badge moves and
+/// the store refuses before anything is written, and two wordings of the same
+/// refusal would drift.
+const markRefusedOffCard =
+    'Cette photographie est un fichier du Mac : elle ne peut pas être marquée '
+    'pour suppression de la carte. Utilisez la corbeille du Mac depuis '
+    'l\'écran Exports.';
 
 /// Where a culling decision is written down so it outlives the session.
 ///
@@ -66,6 +81,9 @@ class TrashMarkStore implements MarkStore {
   /// photograph cannot.
   @override
   Future<MarkReport> mark(PhotoEntity photo) async {
+    final refusal = _refuse(photo);
+    if (refusal != null) return refusal;
+
     await trash.mark(photo);
     if (mode == DeletionMode.deferred) {
       return const MarkReport(MarkEffect.recorded);
@@ -88,8 +106,22 @@ class TrashMarkStore implements MarkStore {
 
   @override
   Future<MarkReport> unmark(PhotoEntity photo) async {
+    final refusal = _refuse(photo);
+    if (refusal != null) return refusal;
+
     await trash.unmark(photo);
     return const MarkReport(MarkEffect.withdrawn);
+  }
+
+  /// Refuses a photograph that is not on a card.
+  ///
+  /// Here rather than in the screens: a trash row's `cardRelativePath` is
+  /// composed from a DCF folder and a file name, which on a Mac file is
+  /// fiction, and Empty Trash would act on it. A guard that lived in a button
+  /// could be lost by adding a second button.
+  static MarkReport? _refuse(PhotoEntity photo) {
+    if (photo.isOnCard) return null;
+    return const MarkReport(MarkEffect.refused, detail: markRefusedOffCard);
   }
 }
 

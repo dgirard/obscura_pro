@@ -63,9 +63,22 @@ const int kPreloadRadius = 2;
 
 /// Full-frame review.
 class ViewerScreen extends ConsumerStatefulWidget {
-  const ViewerScreen({super.key, required this.photos});
+  const ViewerScreen({
+    super.key,
+    required this.photos,
+    this.cursor,
+    this.onClose,
+  });
 
   final List<PhotoEntity> photos;
+
+  /// Which cursor this viewer moves. Defaults to the card grid's, which it
+  /// shares so that the two agree; the exports library passes its own, because
+  /// browsing one must not move the selection in the other.
+  final NotifierProvider<GridCursorNotifier, int>? cursor;
+
+  /// What closing means here. Defaults to leaving the card's viewer.
+  final VoidCallback? onClose;
 
   @override
   ConsumerState<ViewerScreen> createState() => _ViewerScreenState();
@@ -113,6 +126,9 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
     setState(() {});
   }
 
+  NotifierProvider<GridCursorNotifier, int> get _cursor =>
+      widget.cursor ?? gridCursorProvider;
+
   PhotoEntity get _photo => widget.photos[_current.clamp(0, widget.photos.length - 1)];
 
   double get _devicePixelRatio => MediaQuery.devicePixelRatioOf(context);
@@ -150,7 +166,7 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
   void _move(int delta) {
     final next = (_current + delta).clamp(0, widget.photos.length - 1);
     if (next == _current) return;
-    ref.read(gridCursorProvider.notifier).moveTo(next);
+    ref.read(_cursor.notifier).moveTo(next);
     // Fit again on every new frame: carrying one photograph's zoom onto the
     // next would drop the user into a corner of a picture they have not seen.
     _controller.value = Matrix4.identity();
@@ -205,7 +221,14 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
   double _maxZoom(ViewTransform t) =>
       math.max(2, t.zoomForActualPixels(_devicePixelRatio) * 2);
 
-  void _close() => ref.read(viewerOpenProvider.notifier).close();
+  void _close() {
+    final close = widget.onClose;
+    if (close != null) {
+      close();
+      return;
+    }
+    ref.read(viewerOpenProvider.notifier).close();
+  }
 
   void _toggleMark() {
     ref.read(markedForDeletionProvider.notifier).toggle(_photo).then((report) {
@@ -221,8 +244,7 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
 
     // Watched here and nowhere else: the cursor is shared with the grid, and a
     // viewer that sampled it once would keep showing the frame it opened on.
-    final index =
-        ref.watch(gridCursorProvider).clamp(0, widget.photos.length - 1);
+    final index = ref.watch(_cursor).clamp(0, widget.photos.length - 1);
     _current = index;
     final photo = widget.photos[index];
     final obscura = ref.watch(obscuraProvider);

@@ -7,7 +7,10 @@ import '../../app/theme.dart';
 import '../../infra/finder/finder_channel.dart';
 import '../crop/export_service.dart' show ExportStage;
 import '../catalog/photo_entity.dart';
-import '../grid/grid_screen.dart' show LibraryGrid, cardCatalogProvider;
+import '../viewer/viewer_screen.dart';
+import 'export_photo.dart';
+import '../grid/grid_screen.dart'
+    show GridCursorNotifier, LibraryGrid, cardCatalogProvider;
 import 'batch_export.dart';
 import 'export_marks.dart';
 import '../grid/thumbnail_tile.dart';
@@ -15,6 +18,44 @@ import 'export_store.dart';
 
 /// Overridden in tests, which have no Finder.
 final finderProvider = Provider<FinderChannel>((ref) => FinderChannel());
+
+/// The exports, as photographs.
+///
+/// Read from the files themselves rather than from the rows: the folder is the
+/// authority on what exists, and a file this app never recorded is still a
+/// photograph someone can look at.
+final exportPhotosProvider = FutureProvider<List<PhotoEntity>>((ref) async {
+  final records = await ref.watch(exportsProvider.future);
+  final photos = <PhotoEntity>[];
+  for (final record in records) {
+    if (record.missing) continue;
+    final photo = await readExportedPhoto(File(record.path));
+    if (photo != null) photos.add(photo);
+  }
+  return photos;
+});
+
+/// Which export the keyboard is on.
+///
+/// The same notifier as the card grid's and a different instance of it: a
+/// cursor is a cursor, but these are two libraries, and sharing one would make
+/// browsing either move the selection in the other.
+final exportCursorProvider =
+    NotifierProvider<GridCursorNotifier, int>(GridCursorNotifier.new);
+
+/// Whether an export is showing full-frame.
+class ExportViewerOpenNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void open() => state = true;
+  void close() => state = false;
+}
+
+final exportViewerOpenProvider =
+    NotifierProvider<ExportViewerOpenNotifier, bool>(
+  ExportViewerOpenNotifier.new,
+);
 
 /// How a row draws the file it points at.
 ///
@@ -85,56 +126,33 @@ class _ExportsScreenState extends ConsumerState<ExportsScreen> {
     ref.invalidate(exportsProvider);
   }
 
-  void _open(ExportRecord record) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => Dialog(
-        key: const Key('export-preview'),
-        backgroundColor: ObscuraColors.canvas,
-        insetPadding: const EdgeInsets.all(ObscuraSpacing.viewerMargin),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: Image(
-                image: ref.read(exportImageProvider)(record.path),
-                fit: BoxFit.contain,
-                errorBuilder: (context, _, _) => Padding(
-                  padding: const EdgeInsets.all(ObscuraSpacing.overlayPadding),
-                  child: Text(
-                    'Ce fichier n\'est plus lisible.',
-                    style: ObscuraTypography.bodyMedium
-                        .copyWith(color: ObscuraColors.textSecondary),
-                  ),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(ObscuraSpacing.controlGap),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '${record.fileName}  ·  ${record.dimensions}',
-                    style: ObscuraTypography.monoData
-                        .copyWith(color: ObscuraColors.textSecondary),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Fermer'),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  /// Opens [record] full-frame, on the photograph that file actually is.
+  ///
+  /// Matched by path rather than by position: the list holds files this app
+  /// cannot read as photographs — anything can be dropped into a folder — and
+  /// counting past them would open the wrong picture.
+  Future<void> _openFullFrame(ExportRecord record) async {
+    final photos = await ref.read(exportPhotosProvider.future);
+    final index = photos.indexWhere((p) => p.files.first.path == record.path);
+    if (!mounted || index < 0) return;
+    ref.read(exportCursorProvider.notifier).moveTo(index);
+    ref.read(exportViewerOpenProvider.notifier).open();
   }
 
   @override
   Widget build(BuildContext context) {
     final exports = ref.watch(exportsProvider);
+
+    if (ref.watch(exportViewerOpenProvider)) {
+      final photos = ref.watch(exportPhotosProvider).value ?? const [];
+      if (photos.isNotEmpty) {
+        return ViewerScreen(
+          photos: photos,
+          cursor: exportCursorProvider,
+          onClose: () => ref.read(exportViewerOpenProvider.notifier).close(),
+        );
+      }
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -207,7 +225,7 @@ class _ExportsScreenState extends ConsumerState<ExportsScreen> {
                               for (final record in group.$2)
                                 _ExportTile(
                                   record: record,
-                                  onOpen: () => _open(record),
+                                  onOpen: () => _openFullFrame(record),
                                   onReveal: () => _reveal(record),
                                   onRemove: () => _remove(record),
                                 ),
