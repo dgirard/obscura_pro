@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -181,6 +182,31 @@ void main() {
       // culling pass with no way back is one a photographer cannot use quickly.
       await _press(tester, LogicalKeyboardKey.backspace);
       expect(find.byKey(const Key('marked-100LEICA/L1000001')), findsNothing);
+    });
+
+    testWidgets('a corner control hit twice stays the control, not the cell',
+        (tester) async {
+      final opened = <String>[];
+      await _pump(tester, photos, onOpen: (p) => opened.add(p.radical));
+
+      final pointer = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await pointer.addPointer(
+          location: tester.getCenter(find.byKey(const Key('cell-100LEICA/L1000001'))));
+      addTearDown(pointer.removePointer);
+      await tester.pump();
+
+      final button = find.byKey(const Key('mark-100LEICA/L1000001'));
+      await tester.tap(button);
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.tap(button);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+
+      // A click that seems to do nothing is clicked again. The cell opens on a
+      // double click, and the pair landing on a button must stay the button's:
+      // it marks and unmarks, and the photograph does not open behind it.
+      expect(find.byKey(const Key('marked-100LEICA/L1000001')), findsNothing);
+      expect(opened, isEmpty);
     });
 
     testWidgets('marking writes nothing but the mark', (tester) async {

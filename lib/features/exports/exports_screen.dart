@@ -512,22 +512,31 @@ class _ExportTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return GestureDetector(
+    return KeyedSubtree(
       key: Key('export-${record.id}'),
-      onDoubleTap: onOpen,
       child: ThumbnailTile(
         semanticLabel: '${record.fileName}, ${record.detail}',
-        image: Image(
-          image: ref.watch(exportImageProvider)(record.path),
-          fit: BoxFit.contain,
-          // The file was there when the folder was read and is not there now:
-          // it went between the two. The list is refreshed by the acts that
-          // remove files, and by the refresh button for everything else.
-          errorBuilder: (context, _, _) => const Center(
-            child: Icon(
-              Icons.broken_image_outlined,
-              size: 22,
-              color: ObscuraColors.textSecondary,
+        // Over the picture and not over the whole tile: the controls along the
+        // bottom sit inside it, and a double click meant for one of them was
+        // being taken by the tile — the first click looked like it did nothing,
+        // the second turned the pair into the tile's gesture, and the button
+        // never fired at all.
+        image: GestureDetector(
+          onDoubleTap: onOpen,
+          behavior: HitTestBehavior.opaque,
+          child: Image(
+            image: ref.watch(exportImageProvider)(record.path),
+            fit: BoxFit.contain,
+            // The file was there when the folder was read and is not there
+            // now: it went between the two. The list is refreshed by the acts
+            // that remove files, and by the refresh button for everything
+            // else.
+            errorBuilder: (context, _, _) => const Center(
+              child: Icon(
+                Icons.broken_image_outlined,
+                size: 22,
+                color: ObscuraColors.textSecondary,
+              ),
             ),
           ),
         ),

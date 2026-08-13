@@ -7,6 +7,7 @@ import 'package:obscura_pro/features/catalog/photo_entity.dart';
 import 'package:obscura_pro/features/catalog/stable_key.dart';
 import 'package:obscura_pro/features/exports/export_marks.dart';
 import 'package:obscura_pro/features/exports/exports_screen.dart';
+import 'package:obscura_pro/features/viewer/viewer_screen.dart';
 import 'package:obscura_pro/infra/finder/finder_channel.dart';
 import 'package:path/path.dart' as p;
 
@@ -176,6 +177,25 @@ void main() {
     expect(finder.trashed, [path]);
     expect(store.records, isEmpty);
     expect(find.byKey(const Key('exports-empty')), findsOneWidget);
+  });
+
+  testWidgets('a button hit twice does what the button says, not what the tile '
+      'does', (tester) async {
+    final path = file('2026-08-12', 'a.jpg');
+    await pump(tester, [record(id: 1, path: path)]);
+
+    // A click that does not seem to do anything is clicked again. The tile
+    // opens on a double click, and the two taps landing on a control must not
+    // become the tile's gesture instead of the control's.
+    final button = find.byKey(const Key('export-reveal-1'));
+    await tester.tap(button);
+    await tester.pump(const Duration(milliseconds: 80));
+    await tester.tap(button);
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    expect(finder.revealed, isNotEmpty);
+    expect(find.byType(ViewerScreen), findsNothing);
   });
 
   testWidgets('a refused trash keeps the row and says why', (tester) async {

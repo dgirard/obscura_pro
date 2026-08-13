@@ -321,20 +321,20 @@ class _LibraryGridState extends ConsumerState<LibraryGrid> {
                 itemCount: photos.length,
                 itemBuilder: (context, i) {
                   final photo = photos[i];
-                  // Both gestures live here rather than in the cell: a cell
-                  // that recognised taps of its own would compete with this one
-                  // for the same pointer, and a single click would have to wait
-                  // out the double-click timer before it selected anything.
+                  // Selecting is the whole cell's: a click anywhere on a
+                  // photograph is a click on that photograph. Opening is the
+                  // picture's alone — see [PhotoCell.onOpen] for what happened
+                  // when it was here too.
                   return GestureDetector(
                     onTap: () {
                       ref.read(gridCursorProvider.notifier).moveTo(i);
                       _focus.requestFocus();
                     },
-                    onDoubleTap: () {
-                      ref.read(gridCursorProvider.notifier).moveTo(i);
-                      _open();
-                    },
                     child: PhotoCell(
+                      onOpen: () {
+                        ref.read(gridCursorProvider.notifier).moveTo(i);
+                        _open();
+                      },
                       key: Key('cell-${photo.dcfPath}'),
                       photo: photo,
                       // Device pixels, not logical: a Retina cell drawn from a
