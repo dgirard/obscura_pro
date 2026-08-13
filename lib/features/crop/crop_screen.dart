@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:path/path.dart' as p;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -258,7 +260,7 @@ class _CropScreenState extends ConsumerState<CropScreen> {
     // leave crop mode.
     final ExportOutcome outcome;
     try {
-      final folder = await ref.read(exportFolderProvider.future);
+      final folder = await _destinationFor(widget.photo);
       outcome = await ref.read(exportServiceProvider).export(
             photo: widget.photo,
             crop: crop,
@@ -315,6 +317,19 @@ class _CropScreenState extends ConsumerState<CropScreen> {
         }
       }
     }
+  }
+
+  /// Where this crop is written.
+  ///
+  /// A photograph read from the Mac is cut back into its own folder: a re-cut
+  /// belongs beside the file it came from, and that file is already in the
+  /// working directory. A photograph on the card goes to the session folder,
+  /// which is what a day's culling produces.
+  Future<Directory> _destinationFor(PhotoEntity photo) async {
+    if (photo.isOnCard || photo.files.isEmpty) {
+      return ref.read(exportFolderProvider.future);
+    }
+    return Directory(p.dirname(photo.files.first.path));
   }
 
   /// Whether the pointer went down on a corner, and which.
