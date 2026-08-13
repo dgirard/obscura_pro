@@ -68,6 +68,7 @@ class ViewerScreen extends ConsumerStatefulWidget {
     required this.photos,
     this.cursor,
     this.onClose,
+    this.onDelete,
   });
 
   final List<PhotoEntity> photos;
@@ -79,6 +80,12 @@ class ViewerScreen extends ConsumerStatefulWidget {
 
   /// What closing means here. Defaults to leaving the card's viewer.
   final VoidCallback? onClose;
+
+  /// What ⌫ means here. Defaults to marking the frame for deletion from the
+  /// card; the exports library passes the only removal it has, which is the
+  /// Mac's Trash — a photograph read from the Mac has no card path to mark,
+  /// and a key that only ever refuses is a key a photographer stops trusting.
+  final void Function(PhotoEntity photo)? onDelete;
 
   @override
   ConsumerState<ViewerScreen> createState() => _ViewerScreenState();
@@ -231,6 +238,11 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
   }
 
   void _toggleMark() {
+    final delete = widget.onDelete;
+    if (delete != null) {
+      delete(_photo);
+      return;
+    }
     ref.read(markedForDeletionProvider.notifier).toggle(_photo).then((report) {
       final detail = report?.detail;
       if (detail == null || !mounted) return;
@@ -281,8 +293,12 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
             onInvoke: (_) => _toggleMark(),
           ),
           ToggleExportMarkIntent: CallbackAction<ToggleExportMarkIntent>(
-            onInvoke: (_) =>
-                ref.read(exportMarksProvider.notifier).toggle(_photo),
+            // Only for a frame on the card, like the button it stands for: the
+            // queue is a list of things to export *from* the card, and a row
+            // for a file that is already an export would sit in it for ever.
+            onInvoke: (_) => _photo.isOnCard
+                ? ref.read(exportMarksProvider.notifier).toggle(_photo)
+                : null,
           ),
           EnterCropModeIntent: CallbackAction<EnterCropModeIntent>(
             onInvoke: (_) => ref.read(cropModeProvider.notifier).enter(),
@@ -392,6 +408,7 @@ class _ViewerScreenState extends ConsumerState<ViewerScreen> {
                 showExif: showExif,
                 marked: marked,
                 onToggleMark: _toggleMark,
+                onMac: widget.onDelete != null,
                 onClose: _close,
               ),
             ],
@@ -570,6 +587,7 @@ class _Chrome extends ConsumerWidget {
     required this.showExif,
     required this.marked,
     required this.onToggleMark,
+    required this.onMac,
     required this.onClose,
   });
 
@@ -579,6 +597,11 @@ class _Chrome extends ConsumerWidget {
   final bool showExif;
   final bool marked;
   final VoidCallback onToggleMark;
+
+  /// Whether the photograph on screen is a file on the Mac rather than a frame
+  /// on the card. Two of these controls are about a card, and on this side of
+  /// the app one of them changes its meaning and the other has none.
+  final bool onMac;
   final VoidCallback onClose;
 
   @override
@@ -603,11 +626,13 @@ class _Chrome extends ConsumerWidget {
             // go back to find the button would be the reason they stopped
             // looking properly.
             _ChromeButton(
-              tooltip: marked
-                  ? 'Ne plus supprimer (⌫)'
-                  : 'Marquer à supprimer (⌫)',
-              icon: marked ? Icons.delete : Icons.delete_outline,
-              active: marked,
+              tooltip: onMac
+                  ? 'Mettre à la corbeille du Mac (⌫)'
+                  : marked
+                      ? 'Ne plus supprimer (⌫)'
+                      : 'Marquer à supprimer (⌫)',
+              icon: marked && !onMac ? Icons.delete : Icons.delete_outline,
+              active: marked && !onMac,
               onPressed: onToggleMark,
             ),
             // The panel has a key of its own, and a key is not a way of
@@ -620,15 +645,19 @@ class _Chrome extends ConsumerWidget {
               active: ref.watch(layersPanelProvider),
               onPressed: () => ref.read(layersPanelProvider.notifier).toggle(),
             ),
-            _ChromeButton(
-              tooltip: ref.watch(exportMarksProvider).contains(photo.key.value)
-                  ? 'Ne plus exporter (E)'
-                  : 'Marquer à exporter (E)',
-              icon: Icons.ios_share,
-              active: ref.watch(exportMarksProvider).contains(photo.key.value),
-              onPressed: () =>
-                  ref.read(exportMarksProvider.notifier).toggle(photo),
-            ),
+            // Only for a frame on the card: this mark is a queue of things to
+            // export *from* the card, and offering it on a file that is already
+            // an export would be a button that quietly does nothing.
+            if (!onMac)
+              _ChromeButton(
+                tooltip: ref.watch(exportMarksProvider).contains(photo.key.value)
+                    ? 'Ne plus exporter (E)'
+                    : 'Marquer à exporter (E)',
+                icon: Icons.ios_share,
+                active: ref.watch(exportMarksProvider).contains(photo.key.value),
+                onPressed: () =>
+                    ref.read(exportMarksProvider.notifier).toggle(photo),
+              ),
             _ChromeButton(
               tooltip: 'Recadrer (C)',
               icon: Icons.crop,

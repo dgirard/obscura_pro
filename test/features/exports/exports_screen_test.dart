@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:obscura_pro/app/theme.dart';
@@ -7,6 +8,7 @@ import 'package:obscura_pro/features/catalog/photo_entity.dart';
 import 'package:obscura_pro/features/catalog/stable_key.dart';
 import 'package:obscura_pro/features/exports/export_marks.dart';
 import 'package:obscura_pro/features/exports/exports_screen.dart';
+import 'package:obscura_pro/features/grid/thumbnail_tile.dart';
 import 'package:obscura_pro/features/viewer/viewer_screen.dart';
 import 'package:obscura_pro/infra/finder/finder_channel.dart';
 import 'package:path/path.dart' as p;
@@ -196,6 +198,46 @@ void main() {
 
     expect(finder.revealed, isNotEmpty);
     expect(find.byType(ViewerScreen), findsNothing);
+  });
+
+  testWidgets('Delete puts the selected export in the Mac trash',
+      (tester) async {
+    final first = file('2026-08-12', 'a.jpg');
+    final second = file('2026-08-12', 'b.jpg');
+    await pump(tester, [
+      record(id: 1, path: first),
+      record(id: 2, path: second),
+    ]);
+
+    // Selected by clicking it, then the key a photographer already uses on the
+    // card. On a file on the Mac it cannot mean "take this frame off the card";
+    // it means the only removal this screen offers, which is the Mac's Trash.
+    await tester.tap(find.byKey(const Key('export-2')));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
+    await tester.pumpAndSettle();
+
+    expect(finder.trashed, [second]);
+    expect(store.records.map((r) => r.id), [1]);
+  });
+
+  testWidgets('the arrows and Enter walk the list and open it', (tester) async {
+    await pump(tester, [
+      record(id: 1, path: file('2026-08-12', 'a.jpg')),
+      record(id: 2, path: file('2026-08-12', 'b.jpg')),
+    ]);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+
+    // The second tile is the selected one, and Enter opens what is selected.
+    expect(
+      tester
+          .widgetList<ThumbnailTile>(find.byType(ThumbnailTile))
+          .map((t) => t.selected)
+          .toList(),
+      [false, true],
+    );
   });
 
   testWidgets('a refused trash keeps the row and says why', (tester) async {

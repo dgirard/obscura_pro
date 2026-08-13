@@ -184,6 +184,22 @@ void main() {
       expect(find.byKey(const Key('marked-100LEICA/L1000001')), findsNothing);
     });
 
+    testWidgets('PROBE one click on the corner control marks', (tester) async {
+      await _pump(tester, photos);
+
+      final pointer = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await pointer.addPointer(
+          location: tester.getCenter(find.byKey(const Key('cell-100LEICA/L1000001'))));
+      addTearDown(pointer.removePointer);
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('mark-100LEICA/L1000001')));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('marked-100LEICA/L1000001')), findsOneWidget);
+    });
+
     testWidgets('a corner control hit twice stays the control, not the cell',
         (tester) async {
       final opened = <String>[];

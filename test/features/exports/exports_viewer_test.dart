@@ -26,9 +26,11 @@ import '../../infra/preview/tiff_fixture.dart';
 /// impossible while it is open.
 void main() {
   late InMemoryMarkStore marks;
+  late FakeFinder finder;
 
   Future<ProviderContainer> pump(WidgetTester tester) async {
     marks = InMemoryMarkStore();
+    finder = FakeFinder();
     tester.view.physicalSize = const Size(1100, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -52,7 +54,7 @@ void main() {
           exportImageProvider.overrideWithValue(
             (path) => MemoryImage(realJpeg(width: 12, height: 8)),
           ),
-          finderProvider.overrideWithValue(FakeFinder()),
+          finderProvider.overrideWithValue(finder),
           markStoreProvider.overrideWith((ref) async => marks),
           layerRepositoryProvider.overrideWithValue(InMemoryLayerStore()),
           fullPreviewProvider.overrideWith((ref, request) => _image()),
@@ -123,8 +125,8 @@ void main() {
     expect(container.read(gridCursorProvider), 7);
   });
 
-  testWidgets('refuses to mark a file on the Mac for card deletion',
-      (tester) async {
+  testWidgets('Delete puts the open export in the Mac trash, and marks nothing '
+      'on the card', (tester) async {
     final container = await pump(tester);
     await open(tester, 1);
 
@@ -132,11 +134,25 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    // The trash row's path is composed from a DCF folder and file name. On a
-    // Mac file that path is fiction, and Empty Trash would act on it.
+    // The same key as on the card, doing the only thing it can do to a file on
+    // the Mac. What must not happen is the other thing: a trash row's path is
+    // composed from a DCF folder and a file name, which on a Mac file is
+    // fiction, and Empty Trash would act on it.
+    expect(finder.trashed,
+        ['/Users/x/Pictures/Q3Culling/Exports/2026-08-13/a.jpg']);
     expect(marks.calls, isEmpty);
     expect(container.read(markedForDeletionProvider).length, 0);
-    expect(find.textContaining('fichier du Mac'), findsOneWidget);
+  });
+
+  testWidgets('says what the controls do to a file on the Mac', (tester) async {
+    await pump(tester);
+    await open(tester, 1);
+
+    // The card's wording would be a lie here, and the export mark is a decision
+    // about a frame on a card — there is no card behind this picture.
+    expect(find.byTooltip('Mettre à la corbeille du Mac (⌫)'), findsOneWidget);
+    expect(find.byTooltip('Marquer à supprimer (⌫)'), findsNothing);
+    expect(find.byTooltip('Marquer à exporter (E)'), findsNothing);
   });
 
   testWidgets('remembers a guide laid on an export', (tester) async {
