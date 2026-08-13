@@ -11,7 +11,7 @@ import '../../infra/preview/jpeg_size.dart';
 import '../catalog/photo_entity.dart';
 import '../crop/export_service.dart';
 import '../crop/ratio.dart';
-import '../settings/settings_store.dart';
+import 'export_folder.dart';
 
 /// One file this app has written to the Mac, as the exports screen shows it.
 ///
@@ -301,8 +301,14 @@ final exportStoreProvider = Provider<ExportStore>(
   (ref) => DriftExportStore(
     ref.watch(appDatabaseProvider),
     root: () async {
-      final chosen = (await ref.read(settingsProvider.future)).exportFolder;
-      return chosen == null ? defaultExportRoot() : Directory(chosen);
+      final outcome = await ref.read(exportFoldersProvider).root();
+      return switch (outcome) {
+        ExportFolderReady(:final directory) => directory,
+        // The list is a view of a folder; when there is no usable folder there
+        // is nothing to list, and `all()` already treats an absent root as an
+        // empty list rather than an error.
+        ExportFolderRefused() => Directory(''),
+      };
     },
   ),
 );

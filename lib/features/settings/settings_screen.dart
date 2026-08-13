@@ -6,7 +6,18 @@ import '../../app/theme.dart';
 import '../../infra/safety/parasite_guard.dart';
 import '../crop/export_service.dart';
 import '../grid/grid_screen.dart';
+import '../exports/export_folder.dart';
+import '../volume_select/card_selection.dart';
 import 'settings_store.dart';
+
+/// How the export folder is chosen.
+///
+/// A seam because the panel is a platform call: the refusal that guards the
+/// card sits directly behind it, and a guard that cannot be exercised is a
+/// guard nobody knows is broken.
+final directoryPickerProvider = Provider<Future<String?> Function()>(
+  (ref) => () => getDirectoryPath(confirmButtonText: 'Choisir'),
+);
 
 /// The choices that have nowhere else to live.
 ///
@@ -29,6 +40,41 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   /// to a photographer's card, and one that looks active but was never saved is
   /// the worst of both — it reverts on the next launch without ever saying so.
   String? _failure;
+
+  /// Chooses the export folder, refusing the card and remembering the grant.
+  ///
+  /// Two things happen here that cannot happen later. The refusal is checked
+  /// while the user is still looking at their own choice, and the bookmark is
+  /// minted in the same turn as the panel — the ability to create one depends
+  /// on the panel's implicit grant still being live, so deferring it to first
+  /// use fails and the folder is unreadable on the next launch.
+  Future<void> _chooseFolder(Settings settings) async {
+    final chosen = await ref.read(directoryPickerProvider)();
+    if (chosen == null || !mounted) return;
+
+    final folders = ref.read(exportFoldersProvider);
+    if (await folders.isOnRemovableVolume(chosen)) {
+      if (!mounted) return;
+      setState(() => _failure =
+          'Ce dossier est sur une carte. Les exports sont écrits sur le Mac, '
+          'jamais sur la carte — le dossier n\'a pas été changé.');
+      return;
+    }
+
+    try {
+      await ref
+          .read(bookmarkStoreProvider)
+          .save(ExportFolders.bookmarkKey, chosen);
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _failure =
+          'Ce dossier n\'a pas pu être mémorisé, il serait illisible au '
+          'prochain lancement : $error');
+      return;
+    }
+    if (!mounted) return;
+    await _save(settings.copyWith(exportFolder: chosen));
+  }
 
   Future<void> _save(Settings next) async {
     final written = await ref.read(settingsProvider.notifier).save(next);
@@ -88,14 +134,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 const SizedBox(width: ObscuraSpacing.controlGap),
                 FilledButton(
                   key: const Key('settings-choose-folder'),
-                  onPressed: () async {
-                    final chosen = await getDirectoryPath(
-                      confirmButtonText: 'Choisir',
-                    );
-                    if (chosen != null) {
-                      await _save(settings.copyWith(exportFolder: chosen));
-                    }
-                  },
+                  onPressed: () => _chooseFolder(settings),
                   child: const Text('Choisir…'),
                 ),
                 if (settings.exportFolder != null) ...[

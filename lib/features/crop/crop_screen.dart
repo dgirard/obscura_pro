@@ -8,12 +8,12 @@ import '../../app/shortcuts.dart';
 import '../../app/theme.dart';
 import '../../infra/geometry/view_transform.dart';
 import '../catalog/photo_entity.dart';
+import '../exports/export_folder.dart';
 import '../exports/export_store.dart';
 import '../layers/layer_controller.dart';
 import '../layers/layer_painter.dart';
 import '../viewer/obscura.dart';
 import '../viewer/viewer_screen.dart';
-import '../settings/settings_store.dart';
 import 'export_service.dart';
 import 'ratio.dart';
 
@@ -108,10 +108,18 @@ final exportServiceProvider = Provider<ExportService>(
   (ref) => const ExportService(),
 );
 
-/// Where exports go.
+/// Where exports go: the dated folder of the day, under the working root.
+///
+/// Fails with the reason rather than a path when the folder cannot be used —
+/// it is on a card, or it was chosen without its grant being remembered. The
+/// crop screen already reports what it is handed, and a refusal a photographer
+/// can read beats an export that cannot explain itself.
 final exportFolderProvider = FutureProvider<Directory>((ref) async {
-  final chosen = ref.watch(settingsProvider).value?.exportFolder;
-  return chosen == null ? defaultExportFolder() : Directory(chosen);
+  final outcome = await ref.watch(exportFoldersProvider).session();
+  return switch (outcome) {
+    ExportFolderReady(:final directory) => directory,
+    ExportFolderRefused(:final reason) => throw ExportFolderUnusable(reason),
+  };
 });
 
 /// Crop mode over the open photograph.
@@ -264,7 +272,9 @@ class _CropScreenState extends ConsumerState<CropScreen> {
         setState(() {
           _busy = false;
           _stage = null;
-          _failure = 'export impossible : $error';
+          _failure = error is ExportFolderUnusable
+              ? error.reason
+              : 'export impossible : $error';
         });
       }
       return;
