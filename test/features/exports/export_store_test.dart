@@ -67,7 +67,6 @@ void main() {
       expect(entry.pixelHeight, 6336);
       expect(entry.fileName, 'L1000001_3x2_01.jpg');
       expect(entry.byteSize, 2048);
-      expect(entry.missing, isFalse);
     });
 
     test('attaches the export to the photograph, by stable key', () async {
@@ -108,18 +107,19 @@ void main() {
       );
     });
 
-    test('says when the file is not there any more', () async {
+    test('drops a row whose file is not there any more', () async {
+      await writeFile('here.jpg');
+      await record('here.jpg');
       final file = await writeFile('gone.jpg');
       await record('gone.jpg');
       await file.delete();
 
-      final entry = (await store.all()).single;
-      // The row is still the record of an export that happened. What changed is
-      // what is on disk, and the screen has to be able to say so rather than
-      // offering to open a file that is not there.
-      expect(entry.missing, isTrue);
-      expect(entry.byteSize, isNull);
-      expect(entry.pixelWidth, 9520);
+      // This screen is a view of a folder. A file the photographer moved or
+      // threw away in the Finder is not in the folder any more, so it is not
+      // in the view — a tile that cannot be opened is a tile that is only in
+      // the way. The row itself is kept: put the file back and it is listed
+      // again, with everything the app knew about it.
+      expect((await store.all()).map((e) => e.fileName), ['here.jpg']);
     });
 
     test('names the dated folder each export was written into', () async {
@@ -134,6 +134,9 @@ void main() {
       await record('x.jpg');
       expect((await store.all()).single.dimensions, '9520 × 6336 px');
 
+      // A row from a build that did not record pixel sizes, with its file
+      // still in place — the list only shows rows whose file is there.
+      await writeFile('old.jpg');
       await db.compositionDao.recordCropExport(
         CropExportsCompanion.insert(
           photoId: (await db.catalogDao.allPhotos()).single.id,
@@ -164,7 +167,6 @@ void main() {
       // than by decoding it.
       expect(entry.dimensions, '640 × 480 px');
       expect(entry.detail, contains('trouvé dans le dossier'));
-      expect(entry.missing, isFalse);
     });
 
     test('walks the dated session folders', () async {

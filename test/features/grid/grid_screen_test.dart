@@ -1,16 +1,27 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:obscura_pro/app/app_shell.dart';
 import 'package:obscura_pro/app/status_bar.dart';
 import 'package:obscura_pro/app/theme.dart';
 import 'package:obscura_pro/features/catalog/photo_entity.dart';
 import 'package:obscura_pro/features/catalog/stable_key.dart';
 import 'package:obscura_pro/features/grid/grid_screen.dart';
 import 'package:obscura_pro/features/grid/photo_cell.dart';
+import 'package:obscura_pro/features/exports/export_marks.dart';
+import 'package:obscura_pro/features/exports/export_store.dart';
+import 'package:obscura_pro/features/exports/exports_screen.dart';
 import 'package:obscura_pro/features/grid/thumbnail_provider.dart';
+import 'package:obscura_pro/features/settings/settings_screen.dart';
+import 'package:obscura_pro/features/settings/settings_store.dart';
+import 'package:obscura_pro/features/trash/trash_screen.dart';
+import 'package:obscura_pro/features/volume_select/card_selection.dart';
+import 'package:obscura_pro/features/volume_select/volume_screen.dart';
 import 'package:obscura_pro/features/trash/mark_store.dart';
 import 'package:obscura_pro/features/trash/trash_providers.dart';
 import 'package:obscura_pro/infra/preview/preview_extractor.dart';
@@ -173,6 +184,47 @@ void main() {
       expect(find.byKey(const Key('marked-100LEICA/L1000001')), findsNothing);
     });
 
+    testWidgets('PROBE one click on the corner control marks', (tester) async {
+      await _pump(tester, photos);
+
+      final pointer = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await pointer.addPointer(
+          location: tester.getCenter(find.byKey(const Key('cell-100LEICA/L1000001'))));
+      addTearDown(pointer.removePointer);
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('mark-100LEICA/L1000001')));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('marked-100LEICA/L1000001')), findsOneWidget);
+    });
+
+    testWidgets('a corner control hit twice stays the control, not the cell',
+        (tester) async {
+      final opened = <String>[];
+      await _pump(tester, photos, onOpen: (p) => opened.add(p.radical));
+
+      final pointer = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await pointer.addPointer(
+          location: tester.getCenter(find.byKey(const Key('cell-100LEICA/L1000001'))));
+      addTearDown(pointer.removePointer);
+      await tester.pump();
+
+      final button = find.byKey(const Key('mark-100LEICA/L1000001'));
+      await tester.tap(button);
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.tap(button);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+
+      // A click that seems to do nothing is clicked again. The cell opens on a
+      // double click, and the pair landing on a button must stay the button's:
+      // it marks and unmarks, and the photograph does not open behind it.
+      expect(find.byKey(const Key('marked-100LEICA/L1000001')), findsNothing);
+      expect(opened, isEmpty);
+    });
+
     testWidgets('marking writes nothing but the mark', (tester) async {
       await _pump(tester, photos);
 
@@ -287,7 +339,45 @@ void main() {
     });
   });
 
+  group('the window without a card', () {
+    testWidgets('opens the destinations that do not need one', (tester) async {
+      await _pumpSection(tester, LibrarySection.exports);
+
+      // Every one of these screens reads from the Mac. Asking for a card first
+      // is the app asking for something it does not need.
+      expect(find.byType(ExportsScreen), findsOneWidget);
+      expect(find.byType(VolumeScreen), findsNothing);
+    });
+
+    testWidgets('offers the picker where a card is the subject', (tester) async {
+      await _pumpSection(tester, LibrarySection.library);
+
+      // In the content area rather than over the window, so the sidebar stays
+      // usable and the other destinations stay reachable.
+      expect(find.byType(VolumeScreen), findsOneWidget);
+    });
+
+    testWidgets('reaches the trash and the settings too', (tester) async {
+      await _pumpSection(tester, LibrarySection.settings);
+      expect(find.byType(SettingsScreen), findsOneWidget);
+
+      await _pumpSection(tester, LibrarySection.trash);
+      expect(find.byType(TrashScreen), findsOneWidget);
+    });
+  });
+
   group('the status bar', () {
+    testWidgets('says there is no card rather than counting zero photographs',
+        (tester) async {
+      await _pumpBar(tester, const StatusBar(photoCount: null));
+
+      // Zero photographs is a claim about a card. With no card there is no
+      // card to make it about.
+      expect(find.byKey(const Key('status-photo-count')), findsNothing);
+      expect(find.byKey(const Key('status-no-card')), findsOneWidget);
+      expect(find.byKey(const Key('status-card-free')), findsNothing);
+    });
+
     testWidgets('counts the photographs on the card', (tester) async {
       await _pumpBar(tester, const StatusBar(photoCount: 941));
 
@@ -375,6 +465,45 @@ Future<void> _pump(
       ),
     ),
   );
+  await tester.pump();
+}
+
+/// The library screen with no card open, on a given sidebar section.
+Future<void> _pumpSection(WidgetTester tester, LibrarySection section) async {
+  tester.view.physicalSize = const Size(1200, 800);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+
+  late ProviderContainer container;
+
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        // No card was ever chosen, which is the ordinary first launch.
+        availableCardsProvider.overrideWith((ref) async => const []),
+        exportStoreProvider.overrideWithValue(InMemoryExportStore()),
+        exportMarkStoreProvider.overrideWithValue(InMemoryExportMarkStore()),
+        // No application-support directory in a widget test; the store reads
+        // from a temp folder that has no settings file, which is the same
+        // answer as a first launch.
+        settingsStoreProvider.overrideWithValue(
+          SettingsStore(directory: () async => Directory.systemTemp),
+        ),
+      ],
+      child: Consumer(
+        builder: (context, ref, _) {
+          container = ProviderScope.containerOf(context);
+          return MaterialApp(
+            theme: buildObscuraTheme(),
+            home: const Scaffold(body: LibraryScreen()),
+          );
+        },
+      ),
+    ),
+  );
+
+  container.read(librarySectionProvider.notifier).go(section);
+  await tester.pump();
   await tester.pump();
 }
 

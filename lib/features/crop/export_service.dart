@@ -184,7 +184,7 @@ class ExportService {
     required PhotoEntity photo,
     required CropRatio ratio,
   }) async {
-    final stem = '${photo.radical}_${ratio.slug}';
+    final stem = '${_sourceStem(photo.radical)}_${ratio.slug}';
     for (var index = 1; index < 1000; index++) {
       final name = '${stem}_${index.toString().padLeft(2, '0')}.jpg';
       if (!await File(p.join(folder.path, name)).exists()) return name;
@@ -193,6 +193,16 @@ class ExportService {
     // but silently overwriting the first would be the wrong answer to it.
     return '${stem}_${DateTime.now().microsecondsSinceEpoch}.jpg';
   }
+
+  /// The name a crop is built from, with a previous crop's suffix taken off.
+  ///
+  /// A square cut of `L1000864_3x2_01.jpg` is `L1000864_1x1_01.jpg`, not
+  /// `L1000864_3x2_01_1x1_01.jpg`: the working folder invites a second and a
+  /// third pass, and a name that accumulated every one of them would stop
+  /// naming the photograph. Only this app's own shape is stripped — a name
+  /// someone gave their file is theirs.
+  static String _sourceStem(String radical) =>
+      radical.replaceFirst(RegExp(r'_\d+x\d+_\d+$'), '');
 
   static String _exifStamp(DateTime t) =>
       '${t.year.toString().padLeft(4, '0')}:'

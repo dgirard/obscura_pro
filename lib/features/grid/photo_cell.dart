@@ -47,6 +47,7 @@ class PhotoCell extends ConsumerStatefulWidget {
     this.placeholderColor,
     this.onToggleMark,
     this.onToggleWanted,
+    this.onOpen,
   });
 
   final PhotoEntity photo;
@@ -77,6 +78,15 @@ class PhotoCell extends ConsumerStatefulWidget {
   /// Marks or unmarks the photograph as one to export.
   final VoidCallback? onToggleWanted;
 
+  /// Opens the photograph full-frame on a double click.
+  ///
+  /// Taken here rather than around the whole cell, which is where it used to
+  /// be: the corner controls sit inside the cell, and a double click meant for
+  /// one of them was being taken by the cell — the first click seemed to do
+  /// nothing, and the second turned the pair into the cell's gesture, so the
+  /// button never fired at all.
+  final VoidCallback? onOpen;
+
   @override
   ConsumerState<PhotoCell> createState() => _PhotoCellState();
 }
@@ -100,7 +110,11 @@ class _PhotoCellState extends ConsumerState<PhotoCell> {
       semanticLabel: '${photo.radical}, ${photo.formatBadge}',
       selected: widget.selected,
       fill: placeholderColor == null ? null : Color(placeholderColor),
-      image: _Image(photo: photo, thumbnail: thumbnail),
+      image: GestureDetector(
+        onDoubleTap: widget.onOpen,
+        behavior: HitTestBehavior.opaque,
+        child: _Image(photo: photo, thumbnail: thumbnail),
+      ),
       wash: marked
           ? ObscuraColors.statusDelete.withValues(alpha: 0.34)
           : null,

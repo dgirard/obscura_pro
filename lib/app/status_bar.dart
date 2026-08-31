@@ -17,7 +17,7 @@ import 'theme.dart';
 class StatusBar extends StatelessWidget {
   const StatusBar({
     super.key,
-    required this.photoCount,
+    this.photoCount,
     this.markedCount = 0,
     this.markedBytes = 0,
     this.wantedCount = 0,
@@ -27,7 +27,11 @@ class StatusBar extends StatelessWidget {
     this.hints,
   });
 
-  final int photoCount;
+  /// Photographs on the open card, or null when there is no card open.
+  ///
+  /// Null rather than zero: "0 photographies" is a claim about a card, and with
+  /// no card in the reader there is no card to make it about.
+  final int? photoCount;
 
   /// How many photographs are marked for deletion, and what emptying the trash
   /// would reclaim.
@@ -70,12 +74,18 @@ class StatusBar extends StatelessWidget {
       color: ObscuraColors.canvas,
       child: Row(
         children: [
-          _Field(
-            key: const Key('status-photo-count'),
-            child: Text(
-              photoCount == 1 ? '1 photographie' : '$photoCount photographies',
+          if (photoCount == null)
+            const _Field(
+              key: Key('status-no-card'),
+              child: Text('Aucune carte'),
+            )
+          else
+            _Field(
+              key: const Key('status-photo-count'),
+              child: Text(
+                photoCount == 1 ? '1 photographie' : '$photoCount photographies',
+              ),
             ),
-          ),
           if (markedCount > 0)
             _Field(
               key: const Key('status-marked'),
@@ -147,6 +157,7 @@ class LibraryStatusBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final open = ref.watch(cardSelectionProvider) is CardSelectionOpened;
     final photos =
         ref.watch(cardCatalogProvider).value?.photos ?? const <PhotoEntity>[];
     final marked = ref.watch(markedForDeletionProvider);
@@ -174,7 +185,7 @@ class LibraryStatusBar extends ConsumerWidget {
     }
 
     return StatusBar(
-      photoCount: photos.length,
+      photoCount: open ? photos.length : null,
       markedCount: markedCount,
       markedBytes: markedBytes,
       wantedCount: wantedCount,
@@ -182,7 +193,9 @@ class LibraryStatusBar extends ConsumerWidget {
       // Where the user is decides which map applies: Enter opens from the grid
       // and returns from the viewer, and stating the wrong one is worse than
       // stating none.
-      hints: ref.watch(viewerOpenProvider)
+      hints: !open
+          ? null
+          : ref.watch(viewerOpenProvider)
           ? '←→ naviguer   O obscura   ⌘± zoom   ⏎ retour   ⌫ supprimer   E exporter'
           : '↑↓←→ naviguer   ⏎ ouvrir   ⌫ supprimer   E exporter',
       cardFreeBytes: volume?.freeBytes,

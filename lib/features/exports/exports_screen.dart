@@ -3,11 +3,15 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/shortcuts.dart';
 import '../../app/theme.dart';
 import '../../infra/finder/finder_channel.dart';
 import '../crop/export_service.dart' show ExportStage;
 import '../catalog/photo_entity.dart';
-import '../grid/grid_screen.dart' show LibraryGrid, cardCatalogProvider;
+import '../viewer/viewer_screen.dart';
+import 'export_photo.dart';
+import '../grid/grid_screen.dart'
+    show GridCursorNotifier, LibraryGrid, cardCatalogProvider;
 import 'batch_export.dart';
 import 'export_marks.dart';
 import '../grid/thumbnail_tile.dart';
@@ -15,6 +19,43 @@ import 'export_store.dart';
 
 /// Overridden in tests, which have no Finder.
 final finderProvider = Provider<FinderChannel>((ref) => FinderChannel());
+
+/// The exports, as photographs.
+///
+/// Read from the files themselves rather than from the rows: the folder is the
+/// authority on what exists, and a file this app never recorded is still a
+/// photograph someone can look at.
+final exportPhotosProvider = FutureProvider<List<PhotoEntity>>((ref) async {
+  final records = await ref.watch(exportsProvider.future);
+  final photos = <PhotoEntity>[];
+  for (final record in records) {
+    final photo = await readExportedPhoto(File(record.path));
+    if (photo != null) photos.add(photo);
+  }
+  return photos;
+});
+
+/// Which export the keyboard is on.
+///
+/// The same notifier as the card grid's and a different instance of it: a
+/// cursor is a cursor, but these are two libraries, and sharing one would make
+/// browsing either move the selection in the other.
+final exportCursorProvider =
+    NotifierProvider<GridCursorNotifier, int>(GridCursorNotifier.new);
+
+/// Whether an export is showing full-frame.
+class ExportViewerOpenNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void open() => state = true;
+  void close() => state = false;
+}
+
+final exportViewerOpenProvider =
+    NotifierProvider<ExportViewerOpenNotifier, bool>(
+  ExportViewerOpenNotifier.new,
+);
 
 /// How a row draws the file it points at.
 ///
@@ -49,6 +90,31 @@ class ExportsScreen extends ConsumerStatefulWidget {
 class _ExportsScreenState extends ConsumerState<ExportsScreen> {
   String? _failure;
 
+  /// Which export the keyboard is on, as a position in the list on screen.
+  ///
+  /// Local to this screen and not a provider: it is where the eye is, not a
+  /// decision about a photograph. It counts records rather than photographs
+  /// because the list holds files this app cannot read as pictures, and the
+  /// keyboard has to be able to reach those too — to throw them away, if
+  /// nothing else.
+  int _selected = 0;
+
+  final _focus = FocusNode(debugLabel: 'exports-grid');
+
+  /// How many tiles fit on a row, so ↑ and ↓ move by a row like the card's.
+  int _columns = 1;
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _moveBy(int delta, int count, {int stride = 1}) {
+    if (count == 0) return;
+    setState(() => _selected = (_selected + delta * stride).clamp(0, count - 1));
+  }
+
   Future<void> _reveal(ExportRecord record) async {
     final outcome = await ref.read(finderProvider).reveal(record.path);
     if (!mounted) return;
@@ -66,7 +132,7 @@ class _ExportsScreenState extends ConsumerState<ExportsScreen> {
   /// The file to the Trash first, the row second.
   ///
   /// That order is the survivable one: a crash between the two leaves a row
-  /// pointing at a file that is in the Trash, which this list shows as missing.
+  /// pointing at a file that is in the Trash, which this list drops.
   /// The other order would leave a file nothing in the app remembers.
   Future<void> _remove(ExportRecord record) async {
     final finder = ref.read(finderProvider);
@@ -85,57 +151,112 @@ class _ExportsScreenState extends ConsumerState<ExportsScreen> {
     ref.invalidate(exportsProvider);
   }
 
-  void _open(ExportRecord record) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => Dialog(
-        key: const Key('export-preview'),
-        backgroundColor: ObscuraColors.canvas,
-        insetPadding: const EdgeInsets.all(ObscuraSpacing.viewerMargin),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: Image(
-                image: ref.read(exportImageProvider)(record.path),
-                fit: BoxFit.contain,
-                errorBuilder: (context, _, _) => Padding(
-                  padding: const EdgeInsets.all(ObscuraSpacing.overlayPadding),
-                  child: Text(
-                    'Ce fichier n\'est plus lisible.',
-                    style: ObscuraTypography.bodyMedium
-                        .copyWith(color: ObscuraColors.textSecondary),
-                  ),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(ObscuraSpacing.controlGap),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '${record.fileName}  ·  ${record.dimensions}',
-                    style: ObscuraTypography.monoData
-                        .copyWith(color: ObscuraColors.textSecondary),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Fermer'),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+  /// Opens [record] full-frame, on the photograph that file actually is.
+  ///
+  /// Matched by path rather than by position: the list holds files this app
+  /// cannot read as photographs — anything can be dropped into a folder — and
+  /// counting past them would open the wrong picture.
+  /// Puts the file at [path] in the Mac's Trash, from wherever it was asked.
+  ///
+  /// By path rather than by record because the full-frame viewer knows a
+  /// photograph, not a row — and a file this app has no row for is thrown away
+  /// the same way, with the row lookup simply finding nothing to forget.
+  Future<void> _removeAt(String path) async {
+    final records = ref.read(exportsProvider).value ?? const <ExportRecord>[];
+    final known = records.where((r) => r.path == path).firstOrNull;
+    await _remove(
+      known ??
+          ExportRecord(
+            id: -1,
+            radical: '',
+            ratio: '—',
+            orientation: '',
+            path: path,
+            createdAt: DateTime.now(),
+          ),
     );
+  }
+
+  /// The one the keyboard is on, or null when the list is empty.
+  ExportRecord? _current(List<ExportRecord> records) =>
+      records.isEmpty ? null : records[_selected.clamp(0, records.length - 1)];
+
+  Future<void> _openFullFrame(ExportRecord record) async {
+    final photos = await ref.read(exportPhotosProvider.future);
+    final index = photos.indexWhere((p) => p.files.first.path == record.path);
+    if (!mounted || index < 0) return;
+    ref.read(exportCursorProvider.notifier).moveTo(index);
+    ref.read(exportViewerOpenProvider.notifier).open();
   }
 
   @override
   Widget build(BuildContext context) {
     final exports = ref.watch(exportsProvider);
 
+    if (ref.watch(exportViewerOpenProvider)) {
+      final photos = ref.watch(exportPhotosProvider).value ?? const [];
+      if (photos.isNotEmpty) {
+        return ViewerScreen(
+          photos: photos,
+          cursor: exportCursorProvider,
+          onClose: () => ref.read(exportViewerOpenProvider.notifier).close(),
+          onDelete: (photo) => _removeAt(photo.files.first.path),
+        );
+      }
+    }
+
+    final records = exports.value ?? const <ExportRecord>[];
+
+    // The same keys as the card's grid, meaning what they can mean here. A
+    // photographer culling on the card reaches for ⌫ without looking; on this
+    // screen the frame is a file on the Mac, so ⌫ is the Mac's Trash rather
+    // than a mark — the decision is the same one, and the only removal this
+    // screen has ever offered.
+    return Shortcuts(
+      shortcuts: shortcutMapFor(ShortcutScope.grid),
+      child: Actions(
+        actions: {
+          PreviousPhotoIntent: CallbackAction<PreviousPhotoIntent>(
+            onInvoke: (_) => _moveBy(-1, records.length),
+          ),
+          NextPhotoIntent: CallbackAction<NextPhotoIntent>(
+            onInvoke: (_) => _moveBy(1, records.length),
+          ),
+          PreviousRowIntent: CallbackAction<PreviousRowIntent>(
+            onInvoke: (_) => _moveBy(-1, records.length, stride: _columns),
+          ),
+          NextRowIntent: CallbackAction<NextRowIntent>(
+            onInvoke: (_) => _moveBy(1, records.length, stride: _columns),
+          ),
+          OpenViewerIntent: CallbackAction<OpenViewerIntent>(
+            onInvoke: (_) {
+              final record = _current(records);
+              if (record != null) _openFullFrame(record);
+              return null;
+            },
+          ),
+          ToggleMarkForDeletionIntent:
+              CallbackAction<ToggleMarkForDeletionIntent>(
+            onInvoke: (_) {
+              final record = _current(records);
+              if (record != null) _remove(record);
+              return null;
+            },
+          ),
+        },
+        child: Focus(
+          focusNode: _focus,
+          autofocus: true,
+          child: _body(exports, records),
+        ),
+      ),
+    );
+  }
+
+  Widget _body(
+    AsyncValue<List<ExportRecord>> exports,
+    List<ExportRecord> records,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -196,9 +317,11 @@ class _ExportsScreenState extends ConsumerState<ExportsScreen> {
                         // exports reads at the same size and rhythm as the card
                         // it came from.
                         LayoutBuilder(
-                          builder: (context, constraints) => GridView.count(
-                            crossAxisCount:
-                                LibraryGrid.columnsFor(constraints.maxWidth),
+                          builder: (context, constraints) {
+                            _columns =
+                                LibraryGrid.columnsFor(constraints.maxWidth);
+                            return GridView.count(
+                            crossAxisCount: _columns,
                             mainAxisSpacing: ObscuraSpacing.gridGutter,
                             crossAxisSpacing: ObscuraSpacing.gridGutter,
                             shrinkWrap: true,
@@ -207,12 +330,19 @@ class _ExportsScreenState extends ConsumerState<ExportsScreen> {
                               for (final record in group.$2)
                                 _ExportTile(
                                   record: record,
-                                  onOpen: () => _open(record),
+                                  selected: records.indexOf(record) ==
+                                      _selected.clamp(0, records.length - 1),
+                                  onSelect: () => setState(() {
+                                    _selected = records.indexOf(record);
+                                    _focus.requestFocus();
+                                  }),
+                                  onOpen: () => _openFullFrame(record),
                                   onReveal: () => _reveal(record),
                                   onRemove: () => _remove(record),
                                 ),
                             ],
-                          ),
+                          );
+                          },
                         ),
                       ],
                     ],
@@ -483,12 +613,16 @@ class _Empty extends StatelessWidget {
 class _ExportTile extends ConsumerWidget {
   const _ExportTile({
     required this.record,
+    required this.selected,
+    required this.onSelect,
     required this.onOpen,
     required this.onReveal,
     required this.onRemove,
   });
 
   final ExportRecord record;
+  final bool selected;
+  final VoidCallback onSelect;
   final VoidCallback onOpen;
   final VoidCallback onReveal;
   final VoidCallback onRemove;
@@ -497,28 +631,34 @@ class _ExportTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return GestureDetector(
       key: Key('export-${record.id}'),
-      onDoubleTap: record.missing ? null : onOpen,
+      onTap: onSelect,
       child: ThumbnailTile(
+        selected: selected,
         semanticLabel: '${record.fileName}, ${record.detail}',
-        image: record.missing
-            ? const Center(
-                child: Icon(
-                  Icons.image_not_supported_outlined,
-                  size: 22,
-                  color: ObscuraColors.textSecondary,
-                ),
-              )
-            : Image(
-                image: ref.watch(exportImageProvider)(record.path),
-                fit: BoxFit.contain,
-                errorBuilder: (context, _, _) => const Center(
-                  child: Icon(
-                    Icons.broken_image_outlined,
-                    size: 22,
-                    color: ObscuraColors.textSecondary,
-                  ),
-                ),
+        // Over the picture and not over the whole tile: the controls along the
+        // bottom sit inside it, and a double click meant for one of them was
+        // being taken by the tile — the first click looked like it did nothing,
+        // the second turned the pair into the tile's gesture, and the button
+        // never fired at all.
+        image: GestureDetector(
+          onDoubleTap: onOpen,
+          behavior: HitTestBehavior.opaque,
+          child: Image(
+            image: ref.watch(exportImageProvider)(record.path),
+            fit: BoxFit.contain,
+            // The file was there when the folder was read and is not there
+            // now: it went between the two. The list is refreshed by the acts
+            // that remove files, and by the refresh button for everything
+            // else.
+            errorBuilder: (context, _, _) => const Center(
+              child: Icon(
+                Icons.broken_image_outlined,
+                size: 22,
+                color: ObscuraColors.textSecondary,
               ),
+            ),
+          ),
+        ),
         badge: TileBadge(
           // What this app knows about the file: the crop it cut, or that it
           // only found it.
@@ -580,50 +720,36 @@ class _Footer extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: ObscuraTypography.bodySmall.copyWith(
-                    color: record.missing
-                        ? ObscuraColors.textSecondary
-                        : ObscuraColors.textPrimary,
+                    color: ObscuraColors.textPrimary,
                   ),
                 ),
                 Text(
-                  record.missing
-                      ? 'Déplacé ou supprimé depuis le Finder.'
-                      : record.detail,
-                  key: Key(
-                    record.missing
-                        ? 'export-missing-${record.id}'
-                        : 'export-detail-${record.id}',
-                  ),
+                  record.detail,
+                  key: Key('export-detail-${record.id}'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: ObscuraTypography.bodySmall.copyWith(
-                    color: record.missing
-                        ? ObscuraColors.leicaRed
-                        : ObscuraColors.textSecondary,
+                    color: ObscuraColors.textSecondary,
                   ),
                 ),
               ],
             ),
           ),
-          if (!record.missing) ...[
-            _RowButton(
-              keyName: 'export-open-${record.id}',
-              tooltip: 'Voir en grand',
-              icon: Icons.open_in_full,
-              onPressed: onOpen,
-            ),
-            _RowButton(
-              keyName: 'export-reveal-${record.id}',
-              tooltip: 'Afficher dans le Finder',
-              icon: Icons.folder_open,
-              onPressed: onReveal,
-            ),
-          ],
+          _RowButton(
+            keyName: 'export-open-${record.id}',
+            tooltip: 'Voir en grand',
+            icon: Icons.open_in_full,
+            onPressed: onOpen,
+          ),
+          _RowButton(
+            keyName: 'export-reveal-${record.id}',
+            tooltip: 'Afficher dans le Finder',
+            icon: Icons.folder_open,
+            onPressed: onReveal,
+          ),
           _RowButton(
             keyName: 'export-remove-${record.id}',
-            tooltip: record.missing
-                ? 'Retirer de la liste'
-                : 'Mettre à la corbeille du Mac',
+            tooltip: 'Mettre à la corbeille du Mac',
             icon: Icons.delete_outline,
             onPressed: onRemove,
           ),

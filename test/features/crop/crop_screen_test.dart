@@ -10,6 +10,7 @@ import 'package:obscura_pro/features/catalog/photo_entity.dart';
 import 'package:obscura_pro/features/catalog/stable_key.dart';
 import 'package:obscura_pro/features/crop/crop_screen.dart';
 import 'package:obscura_pro/features/crop/export_service.dart';
+import 'package:obscura_pro/features/exports/export_store.dart';
 import 'package:obscura_pro/features/crop/ratio.dart';
 import 'package:obscura_pro/features/layers/layer_controller.dart';
 import 'package:obscura_pro/features/layers/layer_painter.dart';
@@ -135,7 +136,8 @@ void main() {
   testWidgets('says what the export is doing, and that it is done',
       (tester) async {
     final service = _SlowExport();
-    await _pump(tester, exportService: service);
+    final store = InMemoryExportStore();
+    await _pump(tester, exportService: service, exportStore: store);
 
     // Nothing moving yet.
     expect(find.byKey(const Key('crop-progress')), findsNothing);
@@ -165,6 +167,8 @@ void main() {
     expect(find.byKey(const Key('crop-stage')), findsNothing);
     expect(_text(tester, 'crop-exported'), contains('L1000001_3x2_01.jpg'));
     expect(_text(tester, 'crop-exported'), contains('4000 × 2667 px'));
+    // And it is on the list, without anyone pressing refresh.
+    expect(store.recorded, hasLength(1));
   });
 
   testWidgets('a refused export says so instead', (tester) async {
@@ -181,6 +185,32 @@ void main() {
     expect(find.byKey(const Key('crop-progress')), findsNothing);
     expect(_text(tester, 'crop-failure'), 'la carte a été retirée');
     expect(find.byKey(const Key('crop-exported')), findsNothing);
+  });
+
+  testWidgets('a crop of an export lands beside the file it came from',
+      (tester) async {
+    final service = _SlowExport();
+    await _pump(tester, exportService: service, photo: _macPhoto());
+
+    await tester.tap(find.byKey(const Key('crop-export')));
+    await tester.pump();
+    await tester.pump();
+
+    // Beside its source rather than in today's folder: a re-cut belongs with
+    // the file it was cut from, and the working folder is where that file is.
+    expect(service.folder?.path, '/Users/x/Pictures/Q3Culling/Exports/2026-08-01');
+  });
+
+  testWidgets('a crop of a card frame still goes to the session folder',
+      (tester) async {
+    final service = _SlowExport();
+    await _pump(tester, exportService: service);
+
+    await tester.tap(find.byKey(const Key('crop-export')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(service.folder?.path, '/tmp/obscura-test-exports');
   });
 
   testWidgets('the frame follows the pointer, upright', (tester) async {
@@ -289,7 +319,10 @@ Future<ProviderContainer> _pump(
   WidgetTester tester, {
   double width = 1200,
   ExportService? exportService,
+  PhotoEntity? photo,
+  InMemoryExportStore? exportStore,
 }) async {
+  final store = exportStore ?? InMemoryExportStore();
   tester.view.physicalSize = Size(width, 800);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -300,6 +333,10 @@ Future<ProviderContainer> _pump(
       overrides: [
         fullPreviewProvider.overrideWith((ref, request) => _image()),
         layerRepositoryProvider.overrideWithValue(InMemoryLayerStore()),
+        // The recording is part of the export path; a widget test has no
+        // database, and leaving it to the real store would leave a write
+        // hanging behind every successful export.
+        exportStoreProvider.overrideWithValue(store),
         if (exportService != null) ...[
           exportServiceProvider.overrideWithValue(exportService),
           // A widget test has no application-support directory to resolve the
@@ -314,7 +351,7 @@ Future<ProviderContainer> _pump(
           container = ProviderScope.containerOf(context);
           return MaterialApp(
             theme: buildObscuraTheme(),
-            home: Scaffold(body: CropScreen(photo: _photo())),
+            home: Scaffold(body: CropScreen(photo: photo ?? _photo())),
           );
         },
       ),
@@ -362,6 +399,9 @@ class _SlowExport implements ExportService {
   final Completer<ExportOutcome> _done = Completer();
   void Function(ExportStage)? _onStage;
 
+  /// Where the export was told to write.
+  Directory? folder;
+
   void reach(ExportStage stage) => _onStage?.call(stage);
 
   void finish() => _done.complete(
@@ -388,7 +428,37 @@ class _SlowExport implements ExportService {
     void Function(ExportStage stage)? onStage,
   }) {
     _onStage = onStage;
+    this.folder = folder;
     onStage?.call(ExportStage.reading);
     return _done.future;
   }
 }
+
+/// A photograph read from the export folder: no DCF folder, its own file.
+PhotoEntity _macPhoto() => PhotoEntity(
+      radical: 'L1000864_3x2_01',
+      folder: '',
+      key: StableKey.fromMacFile(
+        sizeBytes: 2048,
+        pixelWidth: 1620,
+        pixelHeight: 1080,
+        fallbackName: 'L1000864_3x2_01',
+      ),
+      files: [
+        PhotoFile(
+          name: 'L1000864_3x2_01.jpg',
+          path: '/Users/x/Pictures/Q3Culling/Exports/2026-08-01/'
+              'L1000864_3x2_01.jpg',
+          kind: PhotoFileKind.jpeg,
+          sizeBytes: 2048,
+          modified: DateTime(2026, 8, 1),
+        ),
+      ],
+      viewerPreview: const PreviewStream(
+        offset: 0,
+        length: 2048,
+        kind: PreviewStreamKind.wholeFile,
+        width: 1620,
+        height: 1080,
+      ),
+    );

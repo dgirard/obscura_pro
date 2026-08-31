@@ -38,6 +38,64 @@ void main() {
   CropRect cropOf(CropRatio ratio, {double frameAspect = 640 / 427}) =>
       CropRect.largestIn(frameAspect: frameAspect, ratio: ratio);
 
+  group('naming a crop of a crop', () {
+    test('replaces the previous ratio rather than stacking on it', () async {
+      final subject = await photo();
+
+      final name = await ExportService.nextFileName(
+        folder: exports,
+        // What an export of an export is called: the file on screen is
+        // `L1000864_3x2_01.jpg`, and the cut being made is a square.
+        photo: _named(subject, 'L1000864_3x2_01'),
+        ratio: CropRatio.square,
+      );
+
+      expect(name, 'L1000864_1x1_01.jpg');
+    });
+
+    test('leaves a camera radical alone', () async {
+      final subject = await photo();
+
+      expect(
+        await ExportService.nextFileName(
+          folder: exports,
+          photo: _named(subject, 'L1000864'),
+          ratio: CropRatio.square,
+        ),
+        'L1000864_1x1_01.jpg',
+      );
+    });
+
+    test('still never overwrites a file that is already there', () async {
+      final subject = await photo();
+      await File(p.join(exports.path, 'L1000864_1x1_01.jpg')).writeAsBytes([1]);
+
+      expect(
+        await ExportService.nextFileName(
+          folder: exports,
+          photo: _named(subject, 'L1000864_3x2_02'),
+          ratio: CropRatio.square,
+        ),
+        'L1000864_1x1_02.jpg',
+      );
+    });
+
+    test('a stem that merely looks like a suffix is kept', () async {
+      final subject = await photo();
+
+      // Not a ratio-and-index: nothing is stripped from a name the app did not
+      // write.
+      expect(
+        await ExportService.nextFileName(
+          folder: exports,
+          photo: _named(subject, 'plage_16h30'),
+          ratio: CropRatio.square,
+        ),
+        'plage_16h30_1x1_01.jpg',
+      );
+    });
+  });
+
   group('what the export writes', () {
     test('reports each step as it begins', () async {
       final subject = await photo();
@@ -398,3 +456,18 @@ void main() {
     }
   });
 }
+
+/// The same photograph under another name, which is what an export of an
+/// export is.
+PhotoEntity _named(PhotoEntity photo, String radical) => PhotoEntity(
+      radical: radical,
+      folder: photo.folder,
+      key: photo.key,
+      files: photo.files,
+      captureTime: photo.captureTime,
+      bodySerial: photo.bodySerial,
+      gridPreview: photo.gridPreview,
+      viewerPreview: photo.viewerPreview,
+      orientation: photo.orientation,
+      settings: photo.settings,
+    );

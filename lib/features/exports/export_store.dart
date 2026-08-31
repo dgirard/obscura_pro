@@ -11,15 +11,15 @@ import '../../infra/preview/jpeg_size.dart';
 import '../catalog/photo_entity.dart';
 import '../crop/export_service.dart';
 import '../crop/ratio.dart';
-import '../settings/settings_store.dart';
+import 'export_folder.dart';
 
 /// One file this app has written to the Mac, as the exports screen shows it.
 ///
-/// The row and the file are two different facts, and this keeps them apart:
-/// [missing] is what the app knows about the file *now*, not what it recorded
-/// when it wrote it. A photographer who moved an export into a job folder has
-/// not lost anything, and a list that claimed the file was still there would be
-/// the app being wrong about the one thing it can check.
+/// Every record here has a file behind it. The row and the file are two
+/// different facts, and where they disagree the file wins: a photographer who
+/// moved an export into a job folder has not lost anything, and the row that
+/// stayed behind describes something that is no longer there. Those rows are
+/// dropped when the list is built, so nothing downstream has to ask.
 @immutable
 final class ExportRecord {
   const ExportRecord({
@@ -32,7 +32,6 @@ final class ExportRecord {
     this.pixelWidth,
     this.pixelHeight,
     this.byteSize,
-    this.missing = false,
   });
 
   final int id;
@@ -50,11 +49,8 @@ final class ExportRecord {
   final int? pixelWidth;
   final int? pixelHeight;
 
-  /// Size on disk, read when the list is built. Null when the file is gone.
+  /// Size on disk, read when the list is built.
   final int? byteSize;
-
-  /// True when nothing is at [path] any more.
-  final bool missing;
 
   String get fileName => path.split('/').last;
 
@@ -154,9 +150,15 @@ class DriftExportStore implements ExportStore {
   @override
   Future<List<ExportRecord>> all() async {
     final rows = await _db.compositionDao.allExports();
-    final records = [
-      for (final (export, photo) in rows) await _describe(export, photo),
-    ];
+    // A row whose file is gone is left out rather than shown greyed: this list
+    // is a view of a folder, and a file moved or thrown away in the Finder is
+    // not in the folder. The row stays in the database — put the file back at
+    // its path and it is listed again, with its frame and its crop.
+    final records = <ExportRecord>[];
+    for (final (export, photo) in rows) {
+      final record = await _describe(export, photo);
+      if (record != null) records.add(record);
+    }
 
     final known = {for (final record in records) record.path};
     records.addAll(await _looseFiles(known));
@@ -231,10 +233,11 @@ class DriftExportStore implements ExportStore {
     await _db.compositionDao.forgetExport(id);
   }
 
-  Future<ExportRecord> _describe(CropExport export, Photo photo) async {
+  /// The row as the screen shows it, or null when its file is gone.
+  Future<ExportRecord?> _describe(CropExport export, Photo photo) async {
     final file = File(export.exportPath);
     final stat = await file.stat();
-    final present = stat.type != FileSystemEntityType.notFound;
+    if (stat.type == FileSystemEntityType.notFound) return null;
 
     return ExportRecord(
       id: export.id,
@@ -245,8 +248,7 @@ class DriftExportStore implements ExportStore {
       createdAt: export.createdAt,
       pixelWidth: export.pixelWidth,
       pixelHeight: export.pixelHeight,
-      byteSize: present ? stat.size : null,
-      missing: !present,
+      byteSize: stat.size,
     );
   }
 }
@@ -301,8 +303,14 @@ final exportStoreProvider = Provider<ExportStore>(
   (ref) => DriftExportStore(
     ref.watch(appDatabaseProvider),
     root: () async {
-      final chosen = (await ref.read(settingsProvider.future)).exportFolder;
-      return chosen == null ? defaultExportRoot() : Directory(chosen);
+      final outcome = await ref.read(exportFoldersProvider).root();
+      return switch (outcome) {
+        ExportFolderReady(:final directory) => directory,
+        // The list is a view of a folder; when there is no usable folder there
+        // is nothing to list, and `all()` already treats an absent root as an
+        // empty list rather than an error.
+        ExportFolderRefused() => Directory(''),
+      };
     },
   ),
 );
